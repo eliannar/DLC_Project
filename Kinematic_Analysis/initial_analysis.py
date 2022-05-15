@@ -1,64 +1,80 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from mat4py import loadmat
 
-
-#PATH = r'C:\Users\dvir.bens\Documents\DLC\dataAnaly\analysis_lib\3D_New\11-03-21\nana-try2-trail1_.avi_DLC_Dvir_3D.csv'   #path to the 3D csv file from DLC analysis
-BODY_PART = 'finger'                                                                                         #body part that we want to analysis
-FRAME_RATE = 120                                                                                             #number of frame rate belonging record videos software, it help us know the time difference between 2 coordinates data into excel.
+#DVIR_PATH = r'C:\Users\dvir.bens\Documents\DLC\dataAnaly\analysis_lib\3D_New\11-03-21\nana-try2-trail1_.avi_DLC_Dvir_3D.csv'   #path to the 3D csv file from DLC analysis
+ELIANNA_DATA_PATH = r'Z:\elianna.rosenschein\n270122\DLC_Analysis\nana-trial1_DLC_3D_SIDE.csv'
+ELIANNA_ED_PATH = r'Z:\elianna.rosenschein\n270122\EDfiles\n6901ee.1.mat'
+ELIANNA_INFO_FILE = r'Z:\elianna.rosenschein\n270122\Info\n270122_param.mat'
+BODY_PART = 'finger'  #body part that we want to analyze
+FRAME_RATE = 120      #number of frame rate belonging record videos software, it help us know the time difference between 2 coordinates data into excel.
 THRESHOLD = 0.025
 MOVEMENT_SENSITIVITY = 20
 
+# dictionary that links the body parts from the analysis to the colomns names
+body_cols_side = {'finger': ['DLC_3D_SIDE', 'DLC_3D_SIDE.1', 'DLC_3D_SIDE.2'],
+                      'wrist': ['DLC_3D_SIDE.3', 'DLC_3D_SIDE.4', 'DLC_3D_SIDE.5'],
+                      'elbow': ['DLC_3D_SIDE.6', 'DLC_3D_SIDE.7', 'DLC_3D_SIDE.8']}                                     #dictionary that linking the body parts from the analysis to the colomns names}
+body_cols_top = {'finger': ['DLC_3D_TOP', 'DLC_3D_TOP.1', 'DLC_3D_TOP.2'],
+                 'wrist': ['DLC_3D_TOP.3', 'DLC_3D_TOP.4', 'DLC_3D_TOP.5'],
+                 'elbow': ['DLC_3D_TOP.6', 'DLC_3D_TOP.7', 'DLC_3D_TOP.8']}
+
+
+prep_angle = {'SIDE': body_cols_side, 'TOP': body_cols_top}
+
+
 #PREPROCESSING
-def preprocessing(PATH):
-    body_cols = {'elbow': ['DLC_Dvir_3D', 'DLC_Dvir_3D.1', 'DLC_Dvir_3D.2'],                                     #dictionary that linking the body parts from the analysis to the colomns names
-                'wrist': ['DLC_Dvir_3D.3', 'DLC_Dvir_3D.4', 'DLC_Dvir_3D.5'],
-                'finger': ['DLC_Dvir_3D.6', 'DLC_Dvir_3D.7', 'DLC_Dvir_3D.8']}
-    partial_data = pd.read_csv(PATH, header=0, usecols=body_cols[BODY_PART])                                     #reading the csv file (making the first raw as the names of the column(header=0)). Taking the colonms that have data to our specific body part( usecols=body_cols[BODY_PART] )
-    #rename headers
-    headers_names = ['{0}_x'.format(BODY_PART),'{0}_y'.format(BODY_PART),'{0}_z'.format(BODY_PART)]
-    body_part_cols = [body_cols[BODY_PART][0], body_cols[BODY_PART][1], body_cols[BODY_PART][2]]
-    d = dict(zip(body_part_cols,headers_names))
-    partial_data = partial_data.rename(columns = d, inplace = False)                                            #replacing every time he see column name that is similar to the key in the dic d with his value, without changing permanently the column names in the original file (inplace=false)
+def preprocessing(data_path, angle):
+    info_file = loadmat(ELIANNA_INFO_FILE)
+
+    hfs_subsess, burst_subsess = load_info(ELIANNA_INFO_FILE)
+    ed_file = loadmat(ELIANNA_ED_PATH)
+    TrialTimes = ed_file['TrialTimes']
+
+    partial_data = process_data(ELIANNA_DATA_PATH, angle)
+    indices = loadmat(r'Z:\elianna.rosenschein\alignment_indices_n270122.mat')
+    videoInfo = loadmat(r'Z:\elianna.rosenschein\vidInfo_n270122.mat')
+    plot_velocity(partial_data)
+
+
+def load_info(info_file_path):
+    info_file = loadmat(info_file_path)
+    hfs_subsess = info_file['SESSparam']['fileConfig']['HFS']
+    burst_subsess = info_file['SESSparam']['fileConfig']['BURST']
+    return hfs_subsess, burst_subsess
+
+
+def process_data(data_path, angle):
+    data = pd.read_csv(data_path, header=0, usecols=prep_angle[angle][BODY_PART])
+    # rename headers:
+    headers_names = ['{0}_x'.format(BODY_PART), '{0}_y'.format(BODY_PART), '{0}_z'.format(BODY_PART)]
+    body_part_cols = [prep_angle[angle][BODY_PART][0], prep_angle[angle][BODY_PART][1], prep_angle[angle][BODY_PART][2]]
+    d = dict(zip(body_part_cols, headers_names))
+    partial_data = data.rename(columns=d, inplace=False)
     partial_data = partial_data.drop([0, 1])
 
-    #convert argument to a float type
+    # convert argument to a float type
     partial_data['{0}_x'.format(BODY_PART)] = pd.to_numeric(partial_data['{0}_x'.format(BODY_PART)], downcast="float")
     partial_data['{0}_y'.format(BODY_PART)] = pd.to_numeric(partial_data['{0}_y'.format(BODY_PART)], downcast="float")
     partial_data['{0}_z'.format(BODY_PART)] = pd.to_numeric(partial_data['{0}_z'.format(BODY_PART)], downcast="float")
 
-    #Save partial_data csv
-    i = PATH.find('DLC_Dvir_3D')
-    j = PATH.find('nana')
-    New_PATH = PATH[:j] + 'Data_ana\\' + PATH[j:i] + 'Location_' + PATH[i + 9:]
-    partial_data.to_csv (New_PATH)
+    return partial_data
 
-    #creating diff data
-    diff = partial_data.diff()
-    i = PATH.find('DLC_Dvir_3D')
-    j = PATH.find('nana')
-    New_PATH = PATH[:j] + 'Data_ana\\' + PATH[j:i]  + 'Speed_' + PATH[i+4:]
-    diff.to_csv (New_PATH)
 
+def plot_velocity(data):
+    diff = data.diff()
     diff_x = diff['{0}_x'.format(BODY_PART)].plot()
+
     plt.show()
     diff_y = diff['{0}_y'.format(BODY_PART)].plot()
     plt.show()
     diff_z = diff['{0}_z'.format(BODY_PART)].plot()
+    # plt.plot(data['{0}_x'.format(BODY_PART)], data['{0}_y'.format(BODY_PART)])
     plt.show()
 
-# L = []
-# for i in range(1,4):
-#     a = r'C:\Users\dvir.bens\Documents\DLC\dataAnaly\analysis_lib\3D\nana-try2-trail'
-#     b = '_.avi_DLC_Dvir_3D.csv'
-#     path = a+ str(i) + b
-#     print(path)
-#     L.append(path)
-# print(L)
 
-#preprocessing(r'C:\Users\dvir.bens\Documents\DLC\dataAnaly\analysis_lib\3D_New\11-03-21\nana-try2-trail1_.avi_DLC_Dvir_3D.csv')
-#preprocessing(r'C:\Users\dvir.bens\Documents\DLC\dataAnaly\analysis_lib\3D_New\11-03-21\nana-try2-trail2_.avi_DLC_Dvir_3D.csv')
-preprocessing(r'C:\Users\dvir.bens\Documents\DLC\dataAnaly\analysis_lib\3D\nana-try2-trail1_.avi_DLC_Dvir_3D.csv')
+preprocessing(ELIANNA_DATA_PATH, 'SIDE')
 
 
 
