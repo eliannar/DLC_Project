@@ -12,6 +12,7 @@ VIDEO_INFO_FILE = r'Z:\elianna.rosenschein\vidInfo_n270122'
 
 # dictionary that links the body parts from the analysis to the colomns names
 BODY_PART = 'finger'  # body part that we want to analyze
+ANGLE = 'SIDE'
 body_cols_side = {'finger': ['DLC_3D_SIDE', 'DLC_3D_SIDE.1', 'DLC_3D_SIDE.2'],
                   'wrist': ['DLC_3D_SIDE.3', 'DLC_3D_SIDE.4', 'DLC_3D_SIDE.5'],
                   'elbow': ['DLC_3D_SIDE.6', 'DLC_3D_SIDE.7', 'DLC_3D_SIDE.8']}
@@ -30,6 +31,7 @@ class Day:
     burst_subsess = None
     csv_indices = None
     trial_data = None
+    burst_settings = None
 
     def __init__(self):
         self.trial_data = pd.DataFrame(
@@ -50,6 +52,7 @@ class Day:
         self.burst_subsess = info_file['SESSparam']['fileConfig']['BURST']
         index_file = loadmat(INDEX_FILE)
         self.csv_indices = index_file
+        self.burst_settings = info_file['SESSparam']['SubSess']['Electrode']
 
     def load_ed_files(self):
         """
@@ -58,8 +61,9 @@ class Day:
         """
         running_count = 0  # counter for ALL trials from day
         for subsess in range(self.num_of_subsessions):
-            files_start, files_end = self.subsess_files[subsess] #todo check unpacking
-            for subsess_file in range(files_end + 1 - files_start):  # subsess_file is file index in files from ONE subsession
+            files_start, files_end = self.subsess_files[subsess]
+            for subsess_file in range(
+                    files_end + 1 - files_start):  # subsess_file is file index in files from ONE subsession
                 path = ED_PATH.format(str(self.id) + '0' + str(subsess + 1), subsess_file + 1)
                 ed_file = loadmat(path)
                 invalid_counter = 0
@@ -67,14 +71,24 @@ class Day:
                     running_count += 1
                     file_offset = self.subsess_files[subsess][0] + subsess_file - 1  # file index in all files from day
                     csv_ind = self.find_csv_index(running_count)
-                    invalid_counter, trial_times_ind = self.find_trialtimes_index(ed_file, invalid_counter, trial)
-                    # TODO different kinds of burst: 25 = low (assign 2), empty/130 = high (assign 1), from electrode.1.stim.amp
+                    invalid_counter, trial_times_lst = self.find_trialtimes_index(ed_file, invalid_counter, trial)
+                    burst_type = self.find_burst_type(subsess, file_offset)
                     temp = {'TrialNum': running_count, 'csvNum': csv_ind, 'subSess': subsess + 1,
                             'valid': ed_file['trials'][trial][2], 'target': ed_file['trials'][trial][4],
                             'update': ed_file['trials'][trial][5], 'HFS': self.hfs_subsess[file_offset],
-                            'Burst': self.burst_subsess[file_offset],
-                            'TrialTimes': ed_file['TrialTimes'][trial_times_ind]}  # TODO check trialtimes access
+                            'Burst': burst_type,
+                            'TrialTimes': trial_times_lst}
                     self.trial_data = self.trial_data.append(temp, ignore_index=True)
+
+    def find_burst_type(self, subsess, file_num):
+        # different kinds of burst: 25 = low (assign 2), empty/130 = high (assign 1), from electrode.1.stim.amp
+        is_burst = self.burst_subsess[file_num]
+        if not is_burst:
+            return 0
+        elif self.burst_settings[subsess]['Stim'][0]['Freq'] == 25:
+            return 2
+        else:
+            return 1
 
     def find_csv_index(self, running_count):
         if [running_count] in self.csv_indices['I']:
@@ -97,16 +111,16 @@ class Day:
         if not (edFile['trials'][trial_index][2]):
             ret1 += 1
         if edFile['trials'][trial_index][2]:
-            ret2 = trial_index - invalid_trial_counter
+            trial_times_ind = trial_index - invalid_trial_counter
+            ret2 = edFile['TrialTimes'][trial_times_ind]
         return ret1, ret2
 
-
-    def process_data(self, data_path, angle):
-        data = pd.read_csv(data_path, header=0, usecols=camera_angle[angle][BODY_PART])
+    def process_data(self, trial_index, data_path):
+        data = pd.read_csv(data_path.format(trial_index), header=0, usecols=camera_angle[ANGLE][BODY_PART])
         # rename headers:
         headers_names = ['{0}_x'.format(BODY_PART), '{0}_y'.format(BODY_PART), '{0}_z'.format(BODY_PART)]
-        body_part_cols = [camera_angle[angle][BODY_PART][0], camera_angle[angle][BODY_PART][1],
-                          camera_angle[angle][BODY_PART][2]]
+        body_part_cols = [camera_angle[ANGLE][BODY_PART][0], camera_angle[ANGLE][BODY_PART][1],
+                          camera_angle[ANGLE][BODY_PART][2]]
         d = dict(zip(body_part_cols, headers_names))
         partial_data = data.rename(columns=d, inplace=False)
         partial_data = partial_data.drop([0, 1])
@@ -123,7 +137,13 @@ class Day:
     def preprocess(self):
         self.load_info_file(INFO_FILE)
         self.load_ed_files()
-        self.process_data(DATA_PATH, 'SIDE')
+
+    def run_analysis(self):
+        valid_filmed_trials = self.trial_data.loc[self.trial_data['csvNum'].notna() & self.trial_data['valid'] == 1]
+        for csv_index in valid_filmed_trials['csvNum']:
+            self.process_data(csv_index, DATA_PATH)
+            # TODO find rows in excel that correspond to trialtimes
+            # TODO run analysis function
 
 
 if __name__ == "__main__":
