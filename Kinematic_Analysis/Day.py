@@ -140,11 +140,16 @@ class Day:
 
     def run_analysis(self):
         valid_filmed_trials = self.trial_data.loc[self.trial_data['csvNum'].notna() & self.trial_data['valid'] == 1]
+        temp_data = np.mat
         for csv_index in valid_filmed_trials['csvNum']:
-            self.process_data(csv_index, DATA_PATH)
-            # TODO find rows in excel that correspond to trialtimes
+            trial_data = self.process_data(csv_index, DATA_PATH)
+            # TODO find rows in excel that correspond to trialtimes maybe?
             # TODO run analysis function
+            self.velocity()
 
+    def velocity(self, data):
+        pass
+        #return np.sqrt(data(:, 1).^ 2 + cvel(:, 2).^ 2 + cvel(:, 3).^ 2)
 
 if __name__ == "__main__":
     day = Day()
