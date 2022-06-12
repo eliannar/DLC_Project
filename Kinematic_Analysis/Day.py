@@ -82,9 +82,9 @@ def two_d(data, body_part):
         # ניסינו להדפיס את מספר המטרה על הגרף באמצעות TEXT עבור הנקודת האחרונה. משהו לא הסתדר
     if L.shape[0] != 0:
         center = L[0]
-        # plt.xlim(center[0] - 4, center[0] + 4)
-        # plt.ylim(center[1] - 4, center[1] + 4)
-    # plt.show()
+        plt.xlim(center[0] - 4, center[0] + 4)
+        plt.ylim(center[1] - 4, center[1] + 4)
+    plt.show()
     return L
 
 
@@ -153,8 +153,7 @@ class Day:
         running_count = 0  # counter for ALL trials from day
         for subsess in range(self.num_of_subsessions):
             files_start, files_end = self.subsess_files[subsess]
-            for subsess_file in range(
-                    files_end + 1 - files_start):  # subsess_file is file index in files from ONE subsession
+            for subsess_file in range(files_end + 1 - files_start):  # file index in files from ONE subsession
                 path = self.ed_path.format(trial_num=str(self.id) + '0' + str(subsess + 1), file_num=subsess_file + 1)
                 ed_file = loadmat(path)
                 invalid_counter = 0
@@ -167,16 +166,12 @@ class Day:
 
                     # find from go signal to in periphery
                     is_valid = ed_file['trials'][trial][2]
-                    go_time = None
-                    end_time = None
-                    if csv_ind and is_valid:
-                        go_time = self.vidInfo[1][0][csv_ind - 1]
-                        end_time = self.vidInfo[1][1][csv_ind - 1]
+                    go_end = self.set_go_end(csv_ind, is_valid)
 
                     temp = {'TrialNum': running_count, 'csvNum': int(csv_ind) if csv_ind else 0, 'subSess': subsess + 1,
                             'valid': is_valid, 'target': ed_file['trials'][trial][4],
                             'update': ed_file['trials'][trial][5], 'HFS': self.hfs_subsess[file_offset],
-                            'Burst': burst_type, 'Go_End': [go_time, end_time],
+                            'Burst': burst_type, 'Go_End': go_end,
                             'TrialTimes': trial_times_lst}
                     self.trial_data = pd.concat([self.trial_data, pd.DataFrame([temp])], ignore_index=True)
                     # self.trial_data = self.trial_data.append(temp, ignore_index=True)
@@ -190,6 +185,15 @@ class Day:
             return 2
         else:
             return 1
+
+    def set_go_end(self, csv_ind, is_valid):
+        if csv_ind and is_valid:
+            go_time = self.vidInfo[1][0][csv_ind - 1]
+            end_time = self.vidInfo[1][1][csv_ind - 1]
+            if go_time >= 0 and end_time >= 0:
+                return [go_time, end_time]
+        return False
+
 
     def find_csv_index(self, running_count):
         if [running_count] in self.csv_indices['I']:
@@ -252,25 +256,31 @@ class Day:
         self.load_ed_files()
 
     def run_analysis(self):
-        valid_filmed_trials = self.trial_data.loc[self.trial_data['csvNum'].notna() & self.trial_data['valid'] == 1]
-        condition_trials = valid_filmed_trials #.loc[valid_filmed_trials['update'].notna()]
+        #valid_filmed_trials = self.trial_data.loc[self.trial_data['csvNum'] > 0 & self.trial_data['valid'] == 1]
+        valid_filmed_trials = self.trial_data.query("csvNum > 0 & valid == 1 & Go_End != False")
+        condition_trials = valid_filmed_trials #.loc[self.trial_data['Go_End'] != None]
         temp_data = pd.DataFrame()
         for csv_index in condition_trials['csvNum']:
-            if self.is_update_trial(csv_index) or True:
+            if self.is_update_trial(csv_index) and self.is_HFS(csv_index):
                 trial_data = self.process_data(csv_index)
                 res = self.analysis_func(trial_data, self.body_part)
-                temp_data = pd.concat([temp_data, pd.DataFrame([res])])
-                #plt.scatter(res[:, 0], res[:, 1], c=np.linspace(1, res.shape[0], res.shape[0]), cmap='Reds')
+                #temp_data = pd.concat([temp_data, pd.DataFrame([res])])
+                plt.scatter(res[:, 0], res[:, 1], c=np.linspace(1, res.shape[0], res.shape[0]), cmap='Reds')
         # for i in range(len(temp_data)):
         #     plt.plot(temp_data[i], label=i)
-        avg = temp_data.mean()
-        plt.plot(avg)
+        #avg = temp_data.mean()
+        #plt.plot(avg)
         # plt.legend()
         plt.title("{angle} {analysis}".format(angle=self.angle, analysis=self.analysis_func.__name__))
         plt.show()
 
     def is_update_trial(self, csv_index):
         if math.isnan(self.trial_data.loc[self.trial_data['csvNum'] == csv_index]['update']):
+            return False
+        return True
+
+    def is_HFS(self, csv_index):
+        if list(self.trial_data.loc[self.trial_data['csvNum'] == csv_index]['HFS'])[0] == 0:
             return False
         return True
 
@@ -285,7 +295,7 @@ if __name__ == "__main__":
     BODY_PART = 'finger'  # body part that we want to analyze
     ANGLE = 'SIDE'
     DATE = '270122'
-    ANALYSIS_FUNC = velocity
+    ANALYSIS_FUNC = two_d
 
     data_path = DATA_PATH.format(date=DATE, trial_num='{trial_num}', angle=ANGLE)
     ed_path = ED_PATH.format(date=DATE, trial_num='{trial_num}', file_num='{file_num}')
