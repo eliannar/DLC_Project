@@ -3,6 +3,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from mat4py import loadmat
 import math
+from pandasql import sqldf
+pysqldf = lambda q: sqldf(q, globals())
 
 # dictionary that links the body parts from the analysis to the colomns names
 body_cols_side = {'finger': ['DLC_3D_SIDE', 'DLC_3D_SIDE.1', 'DLC_3D_SIDE.2'],
@@ -224,20 +226,21 @@ class Day:
         data = pd.read_csv(self.data_path.format(trial_num=trial_index), header=0,
                            usecols=camera_angle[self.angle][self.body_part])
         # rename headers:
-        headers_names = ['{0}_x'.format(self.body_part), '{0}_y'.format(self.body_part), '{0}_z'.format(self.body_part)]
-        body_part_cols = [camera_angle[self.angle][self.body_part][0], camera_angle[self.angle][self.body_part][1],
+        headers_names = ['{0}_x'.format(self.body_part),
+                         '{0}_y'.format(self.body_part),
+                         '{0}_z'.format(self.body_part)]
+        body_part_cols = [camera_angle[self.angle][self.body_part][0],
+                          camera_angle[self.angle][self.body_part][1],
                           camera_angle[self.angle][self.body_part][2]]
         d = dict(zip(body_part_cols, headers_names))
         partial_data = data.rename(columns=d, inplace=False)
         partial_data = partial_data.drop([0, 1])
 
         # convert argument to a float type
-        partial_data['{0}_x'.format(self.body_part)] = pd.to_numeric(partial_data['{0}_x'.format(self.body_part)],
-                                                                     downcast="float")
-        partial_data['{0}_y'.format(self.body_part)] = pd.to_numeric(partial_data['{0}_y'.format(self.body_part)],
-                                                                     downcast="float")
-        partial_data['{0}_z'.format(self.body_part)] = pd.to_numeric(partial_data['{0}_z'.format(self.body_part)],
-                                                                     downcast="float")
+        temp_str = '{0}_'.format(self.body_part)
+        partial_data[temp_str + 'x'] = pd.to_numeric(partial_data[temp_str + 'x'], downcast="float")
+        partial_data[temp_str + 'y'] = pd.to_numeric(partial_data[temp_str + 'y'], downcast="float")
+        partial_data[temp_str + 'z'] = pd.to_numeric(partial_data[temp_str + 'z'], downcast="float")
 
         go = list(self.trial_data.loc[self.trial_data['csvNum'] == trial_index]['Go_End'])[0][0]
         end = list(self.trial_data.loc[self.trial_data['csvNum'] == trial_index]['Go_End'])[0][1]
