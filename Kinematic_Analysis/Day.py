@@ -3,8 +3,13 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from mat4py import loadmat
 import math
+
+from mpl_toolkits.mplot3d import Axes3D
 from pandasql import sqldf
+from scipy.signal import savgol_filter
+
 pysqldf = lambda q: sqldf(q, globals())
+PERCENTAGE = 1
 
 # dictionary that links the body parts from the analysis to the colomns names
 body_cols_side = {'finger': ['DLC_3D_SIDE', 'DLC_3D_SIDE.1', 'DLC_3D_SIDE.2'],
@@ -17,7 +22,7 @@ body_cols_top = {'finger': ['DLC_3D_TOP', 'DLC_3D_TOP.1', 'DLC_3D_TOP.2'],
 camera_angle = {'SIDE': body_cols_side, 'TOP': body_cols_top}
 
 FS = 120
-#todo cut off at 750
+
 
 def speed(data, body_part):
     x_dat = data['{0}_x'.format(body_part)]
@@ -36,33 +41,33 @@ def speed(data, body_part):
     return list(speed)
 
 
-def velocity(data, body_part):
+def calculate_velocity(data, body_part):
     x_dat = data['{0}_x'.format(body_part)]
     y_dat = data['{0}_y'.format(body_part)]
     z_dat = data['{0}_z'.format(body_part)]
-    time = pd.Series(np.linspace(0, len(x_dat)/FS, len(x_dat)))
+    time = pd.Series(np.linspace(0, len(x_dat) / FS, len(x_dat)))
 
     temp_data = pd.DataFrame()
-    temp_data['x_dat'] = x_dat.diff() #/ time.diff()
-    temp_data['y_dat'] = y_dat.diff() #/ time.diff()
-    temp_data['z_dat'] = z_dat.diff() #/ time.diff()
+    temp_data['x_dat'] = x_dat.diff()  # / time.diff()
+    temp_data['y_dat'] = y_dat.diff()  # / time.diff()
+    temp_data['z_dat'] = z_dat.diff()  # / time.diff()
 
-
-    #speed_res = pd.DataFrame([speed(data, body_part)])
-    velocity_res = np.linalg.norm(temp_data.values, axis=1) #np.linalg.norm(speed_res.diff(axis=1), axis=1)
+    # speed_res = pd.DataFrame([speed(data, body_part)])
+    velocity_res = np.linalg.norm(temp_data.values, axis=1)  # np.linalg.norm(speed_res.diff(axis=1), axis=1)
 
     return list(velocity_res)
 
-def two_d(data, body_part):
+
+def two_d(data, body_part, plot=False):
     p = np.array([9.095956756, -2.976828776, 8.603911929])  # point of frame 46 from trail 1 from SIDE project
-    q = np.array([6.940065994, -3.029730601, 11.10148329]) # point of frame 120 from trail 50 from SIDE project
-    d = np.array([8.885579723, -2.428987168, 11.60233444])# point of frame 25 from trail 46 from SIDE project
+    q = np.array([6.940065994, -3.029730601, 11.10148329])  # point of frame 120 from trail 50 from SIDE project
+    d = np.array([8.885579723, -2.428987168, 11.60233444])  # point of frame 25 from trail 46 from SIDE project
     u = q - p
     v = d - q
 
     w2 = np.array([u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - v[0] * u[1]])
     w = w2 / np.linalg.norm(w2)
-    #print(np.linalg.norm(w))
+    # print(np.linalg.norm(w))
     T = np.array([2, 4, 7, 5, 1, 6, 3, 8])
     n = 0
     Mov_point_data = data
@@ -70,7 +75,7 @@ def two_d(data, body_part):
     L = np.zeros([len((Mov_point_data)), 2])
 
     x = np.cross(w, v) / np.linalg.norm(np.cross(w, v))
-    #print(x)
+    # print(x)
     y = v / np.linalg.norm(v)
 
     for i in range(len(Mov_point_data)):
@@ -78,19 +83,39 @@ def two_d(data, body_part):
             [Mov_point_data.loc[i, 'finger_x'], Mov_point_data.loc[i, 'finger_y'], Mov_point_data.loc[i, 'finger_z']])
         proj_point = p - np.dot(p, w) * w
         L[i, :] = np.array([np.dot(x, p), np.dot(y, p)])
-    plt.scatter(L[:, 0], L[:, 1], c=np.linspace(1, L.shape[0], L.shape[0]), cmap='Reds')
-        #plt.text(L[-1, 0] + 0.1, L[-1, 0] + 0.1, s=str(T[n]) + ',' + str(i), c='red')
+    # plt.scatter(L[:, 0], L[:, 1], c=np.linspace(1, L.shape[0], L.shape[0]), cmap='Reds')
+    # plt.plot(L[:, 0] -  L[0][0], L[:, 1]-  L[0][1])
+    # plt.text(L[-1, 0] + 0.1, L[-1, 0] + 0.1, s=str(T[n]) + ',' + str(i), c='red')
     n = n + 1
-        # ניסינו להדפיס את מספר המטרה על הגרף באמצעות TEXT עבור הנקודת האחרונה. משהו לא הסתדר
-    if L.shape[0] != 0:
-        center = L[0]
-        plt.xlim(center[0] - 4, center[0] + 4)
-        plt.ylim(center[1] - 4, center[1] + 4)
-    plt.show()
+    # ניסינו להדפיס את מספר המטרה על הגרף באמצעות TEXT עבור הנקודת האחרונה. משהו לא הסתדר
+    if plot:
+        if L.shape[0] != 0 and np.random.binomial(1, PERCENTAGE):
+            plt.plot(L[:, 0] - L[0][0], L[:, 1] - L[0][1])
+            center = L[0]
+            plt.xlim(- 7, 7)
+            plt.ylim(-7, 7)
+        # plt.show()
     return L
 
 
+def rename_headers(data, body_part, angle):
+    headers_names = ['{0}_x'.format(body_part),
+                     '{0}_y'.format(body_part),
+                     '{0}_z'.format(body_part)]
+    body_part_cols = [camera_angle[angle][body_part][0],
+                      camera_angle[angle][body_part][1],
+                      camera_angle[angle][body_part][2]]
+    d = dict(zip(body_part_cols, headers_names))
+    partial_data = data.rename(columns=d, inplace=False)
+    return partial_data.drop([0, 1])
 
+
+def convert_val_to_str(data, body_part):
+    temp_str = '{0}_'.format(body_part)
+    data[temp_str + 'x'] = pd.to_numeric(data[temp_str + 'x'], downcast="float")
+    data[temp_str + 'y'] = pd.to_numeric(data[temp_str + 'y'], downcast="float")
+    data[temp_str + 'z'] = pd.to_numeric(data[temp_str + 'z'], downcast="float")
+    return data
 
 
 class Day:
@@ -111,23 +136,25 @@ class Day:
     trial_data = None
     burst_settings = None
 
-    def __init__(self, date, body_part, angle, analysis_func, data_path, ed_path, info_file, index_file, video_info_file):
+    def __init__(self, date, body_part, angle, analysis_func, data_path, ed_path, info_file, index_file,
+                 video_info_file):
+        analysis_func_dict = {"plot_clusters": self.plot_clusters, "plot_2d_clusters": self.plot_2d_clusters, "plot_velocity": self.plot_velocity}
         self.date = date
         self.body_part = body_part
         self.angle = angle
-        self.analysis_func = analysis_func
+        self.analysis_func = analysis_func_dict[analysis_func]
         self.data_path = data_path
         self.ed_path = ed_path
         self.info_file = info_file
         self.index_file = index_file
         self.video_info_file = video_info_file
         self.trial_data = pd.DataFrame(
-            {'TrialNum': pd.Series([], dtype=str), 'csvNum': pd.Series([], dtype=str),
+            {'ValidTrialNum': pd.Series([], dtype=str), 'csvNum': pd.Series([], dtype=str),
              'valid': pd.Series([], dtype=str),
              'subSess': pd.Series([], dtype=str), 'target': pd.Series([], dtype=str),
              'update': pd.Series([], dtype=str),
-             'HFS': pd.Series([], dtype=str), 'Burst': pd.Series([], dtype=str),  'Go_End': pd.Series([], dtype=str),
-             'TrialTimes': pd.Series([], dtype=str)})
+             'HFS': pd.Series([], dtype=str), 'Burst': pd.Series([], dtype=str), 'Go_End': pd.Series([], dtype=str),
+             'TrialTimes': pd.Series([], dtype=str), 'VidTicks': pd.Series([], dtype=str)})
 
     def load_info_file(self):
         """
@@ -135,24 +162,26 @@ class Day:
         :param info_path:
         :return:
         """
-        info_file = loadmat(self.info_file)
-        self.id = info_file['DDFparam']['ID']
-        self.num_of_subsessions = len(info_file['SESSparam']['SubSess']['Files'])
-        self.subsess_files = info_file['SESSparam']['SubSess']['Files']
-        self.hfs_subsess = info_file['SESSparam']['fileConfig']['HFS']
-        self.burst_subsess = info_file['SESSparam']['fileConfig']['BURST']
-        index_file = loadmat(self.index_file)
-        self.csv_indices = index_file
-        self.burst_settings = info_file['SESSparam']['SubSess']['Electrode']
+        lcl_info_file = loadmat(self.info_file)
+        self.id = lcl_info_file['DDFparam']['ID']
+        self.num_of_subsessions = len(lcl_info_file['SESSparam']['SubSess']['Files'])
+        self.subsess_files = lcl_info_file['SESSparam']['SubSess']['Files']
+        self.hfs_subsess = lcl_info_file['SESSparam']['fileConfig']['HFS']
+        self.burst_subsess = lcl_info_file['SESSparam']['fileConfig']['BURST']
+        self.csv_indices = loadmat(self.index_file)
+        self.burst_settings = lcl_info_file['SESSparam']['SubSess']['Electrode']
 
     def load_ed_files(self):
         """
         Fills Dataframe with each row representing a trial, containing all the relevant information from the ED files
         :return:
         """
-        video_info_file = loadmat(self.video_info_file)
-        self.vidInfo = video_info_file['vidinfo']
-        running_count = 0  # counter for ALL trials from day
+        lcl_video_info_file = loadmat(self.video_info_file)
+        vidinfo = pd.DataFrame(lcl_video_info_file['vidinfo']).transpose()
+        all_vidticks = vidinfo[0] #vidinfo.loc[vidinfo[2] == 1].reset_index()[0]
+        # vidticks = lcl_video_info_file[
+        #     'vidinfo'].query("csvNum > 0 & valid == 1 & Go_End != False")  # contains: vidticks, (go,end), valid/invalid, trialtype, target, update/nonUpdate
+        running_count = 0  # counter for ALL *valid* trials from day
         for subsess in range(self.num_of_subsessions):
             files_start, files_end = self.subsess_files[subsess]
             for subsess_file in range(files_end + 1 - files_start):  # file index in files from ONE subsession
@@ -161,22 +190,31 @@ class Day:
                 invalid_counter = 0
                 for trial in range(len(ed_file['trials'])):  # trial is trial index from one file from one subsession
                     running_count += 1
-                    file_offset = self.subsess_files[subsess][0] + subsess_file - 1  # file index in all files from day
-                    csv_ind = self.find_csv_index(running_count)
-                    invalid_counter, trial_times_lst = self.find_trialtimes_index(ed_file, invalid_counter, trial)
-                    burst_type = self.find_burst_type(subsess, file_offset)
-
-                    # find from go signal to in periphery
                     is_valid = ed_file['trials'][trial][2]
-                    go_end = self.set_go_end(csv_ind, is_valid)
+                    if not is_valid:
+                        invalid_counter += 1
+                    if True: #is_valid:
+                        file_offset = self.subsess_files[subsess][0] + subsess_file - 1  # file index in all files from day
+                        trial_times_lst = self.find_trialtimes_index(ed_file, invalid_counter, trial)
+                        csv_ind = self.find_csv_index(running_count)
+                        burst_type = self.find_burst_type(subsess, file_offset)
+                        vidticks = all_vidticks[running_count - 1] if csv_ind is not None else []
+                        # find from go signal to in periphery
+                        go_end = self.set_go_end(csv_ind, trial_times_lst)
 
-                    temp = {'TrialNum': running_count, 'csvNum': int(csv_ind) if csv_ind else 0, 'subSess': subsess + 1,
-                            'valid': is_valid, 'target': ed_file['trials'][trial][4],
-                            'update': ed_file['trials'][trial][5], 'HFS': self.hfs_subsess[file_offset],
-                            'Burst': burst_type, 'Go_End': go_end,
-                            'TrialTimes': trial_times_lst}
-                    self.trial_data = pd.concat([self.trial_data, pd.DataFrame([temp])], ignore_index=True)
-                    # self.trial_data = self.trial_data.append(temp, ignore_index=True)
+                        temp = {'ValidTrialNum': running_count,
+                                'csvNum': int(csv_ind) if csv_ind else 0,
+                                'subSess': subsess + 1,
+                                'valid': is_valid,
+                                'target': ed_file['trials'][trial][4],
+                                'update': ed_file['trials'][trial][5],
+                                'HFS': self.hfs_subsess[file_offset],
+                                'Burst': burst_type,
+                                'Go_End': go_end,
+                                'TrialTimes': trial_times_lst,
+                                'VidTicks': vidticks}
+                        self.trial_data = pd.concat([self.trial_data, pd.DataFrame([temp])], ignore_index=True)
+        self.trial_data = self.trial_data.query("csvNum > 0 & valid == 1")  # & Go_End != False")
 
     def find_burst_type(self, subsess, file_num):
         # different kinds of burst: 25 = low (assign 2), empty/130 = high (assign 1), from electrode.1.stim.amp
@@ -188,14 +226,13 @@ class Day:
         else:
             return 1
 
-    def set_go_end(self, csv_ind, is_valid):
-        if csv_ind and is_valid:
-            go_time = self.vidInfo[1][0][csv_ind - 1]
-            end_time = self.vidInfo[1][1][csv_ind - 1]
+    def set_go_end(self, csv_ind, trial_times):
+        if csv_ind:
+            go_time = trial_times[4]  # self.vidInfo[1][0][csv_ind - 1]
+            end_time = trial_times[7]  # self.vidInfo[1][1][csv_ind - 1]
             if go_time >= 0 and end_time >= 0:
                 return [go_time, end_time]
         return False
-
 
     def find_csv_index(self, running_count):
         if [running_count] in self.csv_indices['I']:
@@ -213,69 +250,138 @@ class Day:
         :param trial_index:
         :return:
         """
-        ret1 = invalid_trial_counter
-        ret2 = None
-        if not (edFile['trials'][trial_index][2]):
-            ret1 += 1
-        if edFile['trials'][trial_index][2]:
-            trial_times_ind = trial_index - invalid_trial_counter
-            ret2 = edFile['TrialTimes'][trial_times_ind]
-        return ret1, ret2
+        trial_times_ind = trial_index - invalid_trial_counter
+        trial_times_lst = edFile['TrialTimes'][trial_times_ind]
+        return trial_times_lst
+
+    def plot_velocity(self, relevant_trials, body_part, title="", aggregate=False):
+        temp_data = pd.DataFrame()
+        for csv_index in relevant_trials['csvNum']:
+            trial_data = self.process_data(csv_index)
+            res = calculate_velocity(trial_data, body_part)
+            temp_data = pd.concat([temp_data, pd.DataFrame([res])], ignore_index=True)
+        if aggregate:
+            avg = temp_data.mean()
+            plt.plot(avg, label='{0} mean'.format(self.analysis_func.__name__))
+            yhat = savgol_filter(avg, 20, 4)  # window size 51, polynomial order 3
+            plt.plot(yhat, label='smoothed')
+            plt.legend()
+        else:
+            for i in range(len(temp_data)):
+                yhat = savgol_filter(temp_data.iloc[i], 20, 4)  # window size 51, polynomial order 3
+                plt.plot(yhat, label=i)
+        plt.title(title)
+        plt.show()
+
+    def plot_clusters(self, relevant_trials, body_part, title=""):
+        color_dict = {1: 'b', 2: 'r', 3: 'g', 4: 'c', 5: 'm', 6:'y', 7: 'yellow', 8: 'brown'}
+        fig = plt.figure()
+        ax = Axes3D(fig)
+        # for i in range(1, 9):
+        #     plt.figure(i)
+        for csv_index in relevant_trials['csvNum']:
+            trial_data = self.process_data(csv_index)
+            x, y, z = trial_data.iloc[-1] - trial_data.iloc[0]
+            target = list(self.trial_data.loc[self.trial_data['csvNum'] == csv_index]['target'])[0]
+            ax.scatter(x, y, z, color=color_dict[target])
+        ax.set_xlabel('x-axis')
+        ax.set_ylabel('y-axis')
+        ax.set_zlabel('z-axis')
+        plt.show()
+
+    def plot_2d_clusters(self, relevant_trials, body_part, title=""):
+        color_dict = {1: 'b', 2: 'r', 3: 'g', 4: 'c', 5: 'm', 6:'y', 7: 'yellow', 8: 'brown'}
+        plt.figure()
+        for csv_index in relevant_trials['csvNum']:
+            trial_data = self.process_data(csv_index)
+            projection = two_d(trial_data, self.body_part)
+            x = projection[:,0][-1] - projection[:,0][0]
+            y = projection[:,1][-1] - projection[:,1][0]
+            target = list(self.trial_data.loc[self.trial_data['csvNum'] == csv_index]['target'])[0]
+            plt.scatter(x, y, color=color_dict[target])
+        plt.scatter(0, 0, color='k')
+        plt.xlabel('x-axis')
+        plt.ylabel('y-axis')
+        plt.show()
+
 
     def process_data(self, trial_index):
         data = pd.read_csv(self.data_path.format(trial_num=trial_index), header=0,
                            usecols=camera_angle[self.angle][self.body_part])
         # rename headers:
-        headers_names = ['{0}_x'.format(self.body_part),
-                         '{0}_y'.format(self.body_part),
-                         '{0}_z'.format(self.body_part)]
-        body_part_cols = [camera_angle[self.angle][self.body_part][0],
-                          camera_angle[self.angle][self.body_part][1],
-                          camera_angle[self.angle][self.body_part][2]]
-        d = dict(zip(body_part_cols, headers_names))
-        partial_data = data.rename(columns=d, inplace=False)
-        partial_data = partial_data.drop([0, 1])
+        partial_data = rename_headers(data, self.body_part, self.angle)
 
         # convert argument to a float type
-        temp_str = '{0}_'.format(self.body_part)
-        partial_data[temp_str + 'x'] = pd.to_numeric(partial_data[temp_str + 'x'], downcast="float")
-        partial_data[temp_str + 'y'] = pd.to_numeric(partial_data[temp_str + 'y'], downcast="float")
-        partial_data[temp_str + 'z'] = pd.to_numeric(partial_data[temp_str + 'z'], downcast="float")
+        partial_data = convert_val_to_str(partial_data, self.body_part)
 
         go = list(self.trial_data.loc[self.trial_data['csvNum'] == trial_index]['Go_End'])[0][0]
         end = list(self.trial_data.loc[self.trial_data['csvNum'] == trial_index]['Go_End'])[0][1]
-        if math.isnan(go) or math.isnan(end):
+        vidticks = self.trial_data.loc[self.trial_data['csvNum'] == trial_index].reset_index()['VidTicks'][0]
+        if math.isnan(go) or math.isnan(end) or vidticks == []:
             return partial_data[:0]
-        go_diff = [abs(a - go) for a in self.vidInfo[0][trial_index - 1]]
-        end_diff = [abs(a - end) for a in self.vidInfo[0][trial_index - 1]]
+        # print(str(trial_index) + ": " + str(partial_data.shape[0] -len(vidticks)))
+        # # print(len(vidticks))
+        # print("\n")
+        go_diff = [abs(a - go) for a in vidticks]
+        end_diff = [abs(a - end) for a in vidticks]
         gopos = go_diff.index(min(go_diff))
-        endpos = end_diff.index(min(end_diff))
+        start_pos = max(0, gopos - 30)
+        endpos = end_diff.index(min(end_diff))# + 90  # min(750, end_diff.index(min(end_diff)))
+        movement_onset_pos = self.find_mvmnt_pos(partial_data[start_pos:endpos])
+        return partial_data[start_pos + movement_onset_pos:endpos]
 
-
-        return partial_data[gopos:endpos] #max(750,endpos)]
+    def find_mvmnt_pos(self, data): #todo this doesn't work
+        mvmnt_pos = 0
+        if not data.empty:
+            vel = calculate_velocity(data, self.body_part)
+            max_vel = max([a for a in vel if not np.isnan(a)], default=np.nan)
+            if not np.isnan(max_vel):
+                max_pos = vel.index(max_vel)
+                if max_pos > 1:
+                    diff = [abs(a - (max_vel / 10)) for a in vel[:max_pos]]
+                    mvmnt_pos = diff.index(min([a for a in diff if not np.isnan(a)]))
+        return mvmnt_pos
 
     def preprocess(self):
         self.load_info_file()
         self.load_ed_files()
 
-    def run_analysis(self):
-        #valid_filmed_trials = self.trial_data.loc[self.trial_data['csvNum'] > 0 & self.trial_data['valid'] == 1]
-        valid_filmed_trials = self.trial_data.query("csvNum > 0 & valid == 1 & Go_End != False")
-        condition_trials = valid_filmed_trials #.loc[self.trial_data['Go_End'] != None]
-        temp_data = pd.DataFrame()
-        for csv_index in condition_trials['csvNum']:
-            if self.is_update_trial(csv_index) and self.is_HFS(csv_index):
-                trial_data = self.process_data(csv_index)
-                res = self.analysis_func(trial_data, self.body_part)
-                #temp_data = pd.concat([temp_data, pd.DataFrame([res])])
-                plt.scatter(res[:, 0], res[:, 1], c=np.linspace(1, res.shape[0], res.shape[0]), cmap='Reds')
-        # for i in range(len(temp_data)):
-        #     plt.plot(temp_data[i], label=i)
-        #avg = temp_data.mean()
-        #plt.plot(avg)
-        # plt.legend()
-        plt.title("{angle} {analysis}".format(angle=self.angle, analysis=self.analysis_func.__name__))
-        plt.show()
+    def is_desired_update_target(self, target, csv_index):
+        if list(self.trial_data.loc[self.trial_data['csvNum'] == csv_index]['update'] == target)[0]:
+            return True
+        else:
+            return False
+
+    def is_desired_init_target(self, target, csv_index):
+        if list(self.trial_data.loc[self.trial_data['csvNum'] == csv_index]['target'] == target)[0]:
+            return True
+        else:
+            return False
+
+    def meets_requirements(self, hfs=True, update=True, init_target=None, update_target=None):
+        indices = np.full(self.trial_data.shape[0], True)
+        if hfs is not None:
+            hfs_inds = self.trial_data.apply(lambda row: (hfs and self.is_HFS(row['csvNum'])) or (not hfs and not self.is_HFS(row['csvNum'])), axis=1)
+            indices = np.logical_and(indices, hfs_inds)
+        if update is not None:
+            update_inds = self.trial_data.apply(lambda row: (update and self.is_update_trial(row['csvNum'])) or (not update and not self.is_update_trial(row['csvNum'])), axis=1)
+            indices = np.logical_and(indices, update_inds)
+        if init_target is not None:
+            init_target_inds = self.trial_data.apply(lambda row: (self.is_desired_init_target(row['csvNum'], init_target)), axis=1)
+            indices = np.logical_and(indices, init_target_inds)
+        if update_target is not None:
+            update_target_inds = self.trial_data.apply(lambda row: (self.is_desired_update_target(row['csvNum'], update_target)), axis=1)
+            indices = np.logical_and(indices, update_target_inds)
+        return self.trial_data.iloc[list(indices)]
+
+
+    def run_analysis(self, aggregate=True, hfs=True, update=True, init_target=None, update_target=None):
+        relevant_trials = self.meets_requirements(hfs, update, init_target, update_target)
+        title = "{angle} {analysis}".format(angle=self.angle, analysis=self.analysis_func.__name__) + \
+                  (", HFS" if hfs else "") + (", update" if update else "") + \
+                (("\ninit_target: " + str(init_target)) if init_target else "") + \
+                (("\nupdate_target: " + str(update_target)) if update_target else "")
+        self.analysis_func(relevant_trials, self.body_part, title=title)
 
     def is_update_trial(self, csv_index):
         if math.isnan(self.trial_data.loc[self.trial_data['csvNum'] == csv_index]['update']):
@@ -293,12 +399,12 @@ if __name__ == "__main__":
     ED_PATH = r'Z:\elianna.rosenschein\n{date}\EDfiles\n{trial_num}ee.{file_num}.mat'
     INFO_FILE = r'Z:\elianna.rosenschein\n{date}\Info\n{date}_param.mat'
     INDEX_FILE = r'Z:\elianna.rosenschein\alignment_indices_n{date}.mat'  # Exported from Nirvik's Matlab code
-    VIDEO_INFO_FILE = r'Z:\elianna.rosenschein\vidInfo_n{date}.mat'
+    VIDEO_INFO_FILE = r'Z:\elianna.rosenschein\vidInfo_n{date}.mat'  # Exported from Nirvik's Matlab code
 
     BODY_PART = 'finger'  # body part that we want to analyze
     ANGLE = 'SIDE'
     DATE = '270122'
-    ANALYSIS_FUNC = two_d
+    ANALYSIS_FUNC = "plot_velocity"
 
     data_path = DATA_PATH.format(date=DATE, trial_num='{trial_num}', angle=ANGLE)
     ed_path = ED_PATH.format(date=DATE, trial_num='{trial_num}', file_num='{file_num}')
@@ -308,8 +414,8 @@ if __name__ == "__main__":
 
     day = Day(DATE, BODY_PART, ANGLE, ANALYSIS_FUNC, data_path, ed_path, info_file, index_file, video_info_file)
     day.preprocess()
-    day.run_analysis()
+    day.run_analysis(aggregate=False, hfs=None, update=True, init_target=None, update_target=None)
 
-#TODO ALIGN TO MOVEMENT ONSET
-#TODO AVERAGE LOCATION DATA?
-#TODO JOINT ANGLES
+# todo work on velocity and make sure start/mvmnt/end times are correct
+
+# TODO JOINT ANGLES
