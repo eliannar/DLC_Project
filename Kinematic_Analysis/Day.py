@@ -1,3 +1,5 @@
+import statistics
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -10,7 +12,7 @@ from scipy.signal import savgol_filter
 
 pysqldf = lambda q: sqldf(q, globals())
 PERCENTAGE = 1
-KERNEL_SIZE = 20
+KERNEL_SIZE = 25
 
 # dictionary that links the body parts from the analysis to the colomns names
 body_cols_side = {'finger': ['DLC_3D_SIDE', 'DLC_3D_SIDE.1', 'DLC_3D_SIDE.2'],
@@ -22,11 +24,14 @@ body_cols_top = {'finger': ['DLC_3D_TOP', 'DLC_3D_TOP.1', 'DLC_3D_TOP.2'],
 
 camera_angle = {'SIDE': body_cols_side, 'TOP': body_cols_top}
 
+#targets based on mean endpoint in this specific projection
+target_dict = {1: (0.43902833714569894, -1.4275273691008923), 2: (3.3323351848647977, -1.0233081538278552), 3: (3.0724469287156095, 0.8049932081901696), 4: (1.2696497115583854, 0.952799133154195), 5: (-0.39409753186542545, 1.1234683471889075), 6: (-1.6717630953467482, 0.6480369523813078), 7: (-2.3354596891361936, 0.031703546917977755), 8: (-0.46727825652621824, -1.440262648445679)}
+
 FS = 120
 
 
 def check_delta(trial_data, body_part):
-    if trial_data.empty:
+    if trial_data.empty or trial_data.shape[0] < 2:
         return 0
     kernel = np.ones(KERNEL_SIZE) / KERNEL_SIZE
     vel = calculate_velocity(trial_data, body_part)
@@ -281,19 +286,24 @@ class Day:
             res = calculate_velocity(trial_data, body_part)
             res = res / np.nanmax(res)
             temp_data = pd.concat([temp_data, pd.DataFrame([res])], ignore_index=True)
+
+            ##
+            # kernel = np.ones(KERNEL_SIZE) / KERNEL_SIZE
+            # yhat = np.convolve(res, kernel, mode='same')
+            # if csv_index in (442, 717, 882, 937, 969, 1082, 1113, 1132, 1142): #yhat[20] < 0.1:
+            #     plt.plot(yhat, label=csv_index)
+            ##
         if aggregate:
             avg = temp_data.mean()
             plt.plot(avg, label='{0} mean'.format(self.analysis_func.__name__))
-            yhat = savgol_filter(avg, 20, 4)  # window size 51, polynomial order 3
-            plt.plot(yhat, label='smoothed')
             plt.legend()
         else:
             for i in range(len(temp_data)):
                 kernel = np.ones(KERNEL_SIZE) / KERNEL_SIZE
                 yhat = np.convolve(temp_data.iloc[i], kernel, mode='same')
-                # yhat = savgol_filter(temp_data.iloc[i], 20, 4)  # window size 51, polynomial order 3
                 plt.plot(yhat, label=i)
         plt.title(title)
+        plt.legend()
         plt.show()
 
     def plot_clusters(self, relevant_trials, body_part, title=""):
@@ -306,7 +316,7 @@ class Day:
                 continue
             x, y, z = trial_data.iloc[-1] - trial_data.iloc[0]
             target = list(self.trial_data.loc[self.trial_data['csvNum'] == csv_index]['target'])[0]
-            ax.scatter(x, y, z, color=color_dict[target])
+            ax.scatter(x, -y, z, color=color_dict[target])
         ax.set_xlabel('x-axis')
         ax.set_ylabel('y-axis')
         ax.set_zlabel('z-axis')
@@ -316,19 +326,21 @@ class Day:
     def plot_2d_trajectory(self, relevant_trials, body_part, title=""):
         color_dict = {1: 'b', 2: 'r', 3: 'g', 4: 'c', 5: 'm', 6: 'y', 7: 'yellow', 8: 'brown'}
         plt.figure()
+        for i in range(1, 9):
+            plt.scatter(target_dict[i][0], target_dict[i][1], s=150, c=color_dict[i])
         for csv_index in relevant_trials['csvNum']:
             trial_data = self.process_data(csv_index)
             if trial_data.empty:
                 continue
             projection = two_d(trial_data, self.body_part, plot=False)
             x = projection[:, 0] - projection[:, 0][0]
-            y = projection[:, 1] - projection[:, 1][0]
+            y = -1 * (projection[:, 1] - projection[:, 1][0])
             init_target = list(self.trial_data.loc[self.trial_data['csvNum'] == csv_index]['target'])[0]
             update_target = list(self.trial_data.loc[self.trial_data['csvNum'] == csv_index]['update'])[0]
             update_target = update_target if update_target is not None else 'k'
             plt.plot(x, y, color=color_dict[init_target])
         plt.xlim(-4, 4)
-        plt.ylim(-4,4)
+        plt.ylim(-4, 4)
         plt.xlabel('x-axis')
         plt.ylabel('y-axis')
         plt.title(title)
@@ -343,7 +355,7 @@ class Day:
                 continue
             projection = two_d(trial_data, self.body_part, plot=False)
             x = projection[:, 0][-1] - projection[:, 0][0]
-            y = projection[:, 1][-1] - projection[:, 1][0]
+            y = -1 * (projection[:, 1][-1] - projection[:, 1][0])
             target = list(self.trial_data.loc[self.trial_data['csvNum'] == csv_index]['target'])[0]
             init_target = list(self.trial_data.loc[self.trial_data['csvNum'] == csv_index]['target'])[0]
             update_target = list(self.trial_data.loc[self.trial_data['csvNum'] == csv_index]['update'])[0]
@@ -378,12 +390,11 @@ class Day:
         movement_onset_pos = self.find_mvmnt_pos(partial_data[start_pos:endpos])
         if check_delta(partial_data[start_pos + movement_onset_pos:endpos], self.body_part) < 0.2:
             return partial_data[:0]
-        # if np.random.binomial(1, 0.3):#trial_index in (119, 139, 372, 382, 387, 637):
+        # if np.random.binomial(1, 0.1):#trial_index in (119, 139, 372, 382, 387, 637):
         #     kernel = np.ones(KERNEL_SIZE) / KERNEL_SIZE
         #     vel = calculate_velocity(partial_data[start_pos:endpos], self.body_part)
         #     vel = vel / np.nanmax(vel)
         #     yhat = np.convolve(vel, kernel, mode='same')
-        #     # yhat = savgol_filter(temp_data.iloc[i], 20, 4)  # window size 51, polynomial order 3
         #     plt.plot(yhat, label=trial_index)
         #     plt.legend()
         #     plt.scatter(0, yhat[0], marker='o')
@@ -397,15 +408,34 @@ class Day:
         if not data.empty:
             vel = calculate_velocity(data, self.body_part)
             kernel = np.ones(KERNEL_SIZE) / KERNEL_SIZE
+            vel = vel - (np.nanmean(vel[:5]))
             vel = vel / np.nanmax(vel)
             vel = list(np.convolve(vel, kernel, mode='same'))
             max_vel = max([a for a in vel if not np.isnan(a)], default=np.nan)
             if not np.isnan(max_vel):
                 max_pos = vel.index(max_vel)
                 if max_pos > 1:
-                    diff = [abs(a - (max_vel / 6)) for a in vel[:max_pos + 1]]
-                    mvmnt_pos = diff.index(min([a for a in diff if not np.isnan(a)]))
+                    diff = [(a < (max_vel / 10)) for a in vel[:max_pos + 1]]
+                    try:
+                        mvmnt_pos = diff[::-1].index(True)
+                        mvmnt_pos = len(diff) - mvmnt_pos - 1
+                    except:
+                        mvmnt_pos = 0
+                        return mvmnt_pos
+                while not self.mvmnt_local_min(mvmnt_pos, vel):
+                    pass
+                    diff = diff[mvmnt_pos + 1:]
+                    try:
+                        offset = diff[::-1].index(min([a for a in diff if not np.isnan(a)]))
+                        offset = len(diff) - offset - 1
+                        mvmnt_pos += offset
+                    except:
+                        mvmnt_pos = mvmnt_pos
+                        break
         return mvmnt_pos  # - ms_to_frames(1)
+
+    def mvmnt_local_min(self, position, velocity_vector):
+        return velocity_vector[position] < (0.5 * max(velocity_vector[position:position + ms_to_frames(50)]))
 
     def preprocess(self):
         self.load_info_file()
@@ -474,7 +504,36 @@ class Day:
         pd.Series(delta_list).plot.kde()
         plt.scatter(0.1, 0.5)
         plt.show()
+
+    def calc_mean_reaction_time(self, all_data):
+        """
+        helper function that finds distribution of differences between movement onset velocity and peak velocity
+        :param all_data:
+        :return: we should cut off the ones that are less than 0.2
+        """
+        delta_list = []
+        for csv_index in all_data['csvNum']:
+            trial_data, start_pos, mvmnt_pos = self.process_data(csv_index)
+            delta_list.append(int(mvmnt_pos))
+        pd.Series(delta_list).plot.kde()
+        plt.show()
         print('buffer')
+
+    def find_target_center(self, relevant_trials):
+        target_dict = {1: [[], []], 2: [[], []], 3: [[], []], 4: [[], []], 5: [[], []], 6: [[], []], 7: [[], []], 8: [[], []]}
+        for csv_index in relevant_trials['csvNum']:
+            trial_data = self.process_data(csv_index)
+            if trial_data.empty:
+                continue
+            projection = two_d(trial_data, self.body_part, plot=False)
+            x = projection[:, 0][-1] - projection[:, 0][0]
+            y = projection[:, 1][-1] - projection[:, 1][0]
+            target = list(self.trial_data.loc[self.trial_data['csvNum'] == csv_index]['target'])[0]
+            target_dict[target][0].append(x)
+            target_dict[target][1].append(y)
+        for k in range(1, 9):
+            print("target " + str(k) + ": x=" + str(statistics.mean(target_dict[k][0])) + ", y=" + str(statistics.mean(target_dict[k][1])))
+
 
 
 if __name__ == "__main__":
@@ -487,7 +546,7 @@ if __name__ == "__main__":
     BODY_PART = 'finger'  # body part that we want to analyze
     ANGLE = 'SIDE'
     DATE = '270122'
-    ANALYSIS_FUNC = "two_d"
+    ANALYSIS_FUNC = "two_d"  #
 
     data_path = DATA_PATH.format(date=DATE, trial_num='{trial_num}', angle=ANGLE)
     ed_path = ED_PATH.format(date=DATE, trial_num='{trial_num}', file_num='{file_num}')
@@ -497,6 +556,9 @@ if __name__ == "__main__":
 
     day = Day(DATE, BODY_PART, ANGLE, ANALYSIS_FUNC, data_path, ed_path, info_file, index_file, video_info_file)
     day.preprocess()
-    day.run_analysis(aggregate=False, hfs=False, update=False, init_target=6, update_target=None)
+    # day.calc_mean_reaction_time(day.trial_data)
+    day.run_analysis(aggregate=False, hfs=False, update=False, init_target=None, update_target=None)
 
 # TODO JOINT ANGLES
+# todo if possible make movement time better
+# todo update time checks
