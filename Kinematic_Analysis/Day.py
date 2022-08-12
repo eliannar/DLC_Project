@@ -16,8 +16,6 @@ pysqldf = lambda q: sqldf(q, globals())
 PERCENTAGE = 1
 KERNEL_SIZE = 40
 
-
-
 # dictionary that links the body parts from the analysis to the colomns names
 body_cols_side = {'finger': ['DLC_3D_SIDE', 'DLC_3D_SIDE.1', 'DLC_3D_SIDE.2'],
                   'wrist': ['DLC_3D_SIDE.3', 'DLC_3D_SIDE.4', 'DLC_3D_SIDE.5'],
@@ -28,11 +26,20 @@ body_cols_top = {'finger': ['DLC_3D_TOP', 'DLC_3D_TOP.1', 'DLC_3D_TOP.2'],
 
 camera_angle = {'SIDE': body_cols_side, 'TOP': body_cols_top}
 
-# targets based on mean endpoint in this specific projection
-target_dict = {1: (0.43902833714569894, -1.4275273691008923), 2: (3.3323351848647977, -1.0233081538278552),
-               3: (3.0724469287156095, 0.8049932081901696), 4: (1.2696497115583854, 0.952799133154195),
-               5: (-0.39409753186542545, 1.1234683471889075), 6: (-1.6717630953467482, 0.6480369523813078),
-               7: (-2.3354596891361936, 0.031703546917977755), 8: (-0.46727825652621824, -1.440262648445679)}
+# # targets based on mean endpoint in this specific projection
+# target_dict = {1: (0.43902833714569894, -1.4275273691008923), 2: (3.3323351848647977, -1.0233081538278552),
+#                3: (3.0724469287156095, 0.8049932081901696), 4: (1.2696497115583854, 0.952799133154195),
+#                5: (-0.39409753186542545, 1.1234683471889075), 6: (-1.6717630953467482, 0.6480369523813078),
+#                7: (-2.3354596891361936, 0.031703546917977755), 8: (-0.46727825652621824, -1.440262648445679)}
+
+
+# targets scaled from Nirvik's coordinates, and flipped on the y axis
+scale_factor = 3.2
+target_dict = {1: (0, -scale_factor * 0.68), 2: (scale_factor * 0.476, -scale_factor * 0.476),
+               3: (scale_factor * 0.68, 0), 4: (scale_factor * 0.476, -scale_factor * -0.476),
+               5: (0, -scale_factor * -0.63), 6: (scale_factor * -0.476, -scale_factor * -0.476),
+               7: (scale_factor * -0.68, 0), 8: (scale_factor * -0.476, -scale_factor * 0.476)}
+
 
 FS = 120
 
@@ -288,15 +295,15 @@ class Day:
     def set_go_end(self, csv_ind, trial_times):
         if csv_ind:
             go_time = trial_times[3]  # self.vidInfo[1][0][csv_ind - 1]
-            end_time = trial_times[7]  # self.vidInfo[1][1][csv_ind - 1]
+            end_time = trial_times[10]  # self.vidInfo[1][1][csv_ind - 1] #todo maybe change back to 7
             if go_time >= 0 and end_time >= 0:
                 return [go_time, end_time]
         return False
 
     def find_csv_index(self, running_count):
-        if [running_count] in self.csv_indices['I']:
-            general_ind = self.csv_indices['I'].index([running_count])  # includes invalid trials
-            return self.csv_indices['J'][general_ind][0]
+        if running_count in self.csv_indices['I']:
+            general_ind = self.csv_indices['I'].index(running_count)  # includes invalid trials
+            return self.csv_indices['J'][general_ind]
         else:
             return None
 
@@ -381,7 +388,7 @@ class Day:
             # plt.plot(x, y, color=color_dict[init_target], label='traj')  # change here to color by init or update target
 
             # todo play with this
-            tolerance = 0.5
+            tolerance = 0.2 # determines how simplified the path will be. The larger the tolerance, the straighter the line
             min_angle = np.pi * 0.3  # 0.22
             points = np.vstack((x, y)).T
 
@@ -474,7 +481,12 @@ class Day:
         # convert argument to a float type
         partial_data = convert_val_to_str(partial_data, self.body_part)
 
-        go = list(self.trial_data.loc[self.trial_data['csvNum'] == trial_index]['Go_End'])[0][0]
+        try: #TODO
+            go = list(self.trial_data.loc[self.trial_data['csvNum'] == trial_index]['Go_End'])[0][0]
+        except:
+            print(trial_index)
+            exit(1)
+
         end = list(self.trial_data.loc[self.trial_data['csvNum'] == trial_index]['Go_End'])[0][1]
         vidticks = self.trial_data.loc[self.trial_data['csvNum'] == trial_index].reset_index()['VidTicks'][0]
         if math.isnan(go) or math.isnan(end) or vidticks == []:
@@ -484,9 +496,12 @@ class Day:
         end_diff = [abs(a - end) for a in vidticks]
         gopos = go_diff.index(min(go_diff))
         start_pos = max(0, gopos)
-        endpos = min(end_diff.index(min(end_diff)), start_pos + ms_to_frames(1500))
+        endpos = min(end_diff.index(min(end_diff)), start_pos + 200)
         movement_onset_pos = self.find_mvmnt_pos(partial_data[start_pos:endpos])
-        if check_delta(partial_data[start_pos:endpos], self.body_part) < 0.15:
+        in_periph = list(self.trial_data.loc[self.trial_data['csvNum'] == trial_index]['TrialTimes'])[0][7]
+        in_periph_diff = [abs(a - in_periph) for a in vidticks]
+        in_periph_pos = in_periph_diff.index(min(in_periph_diff))
+        if check_delta(partial_data[start_pos:in_periph_pos], self.body_part) < 0.15:
             if (self.is_update_trial(trial_index)):
                 if self.is_HFS(trial_index):
                     self.a1 += 1
@@ -502,14 +517,14 @@ class Day:
         if True:
             trial_times_7 = list(self.trial_data.loc[self.trial_data['csvNum'] == trial_index]['TrialTimes'])[0][6]
             seven_diff = [abs(a - trial_times_7) for a in vidticks]
-            seven_pos = seven_diff.index(min(seven_diff)) #- start_pos
+            seven_pos = seven_diff.index(min(seven_diff))  # - start_pos
         # plt.scatter(movement_onset_pos, seven_pos - gopos)
         # plt.plot(np.linspace(0, 120), np.linspace(0, 120))
         # plt.title("my mvmnt onset as compared to trialTimes 7")
         # plt.xlabel("my MT")
         # plt.ylabel("TrialTimes 7")
         # # plt.show()
-        if False: #np.random.binomial(1, 1): # abs(movement_onset_pos - seven_pos) > 20: :#trial_index in (119, 139, 372, 382, 387, 637):
+        if False:  # np.random.binomial(1, 1): # abs(movement_onset_pos - seven_pos) > 20: :#trial_index in (119, 139, 372, 382, 387, 637):
             kernel = np.ones(KERNEL_SIZE) / KERNEL_SIZE
             vel = calculate_velocity(partial_data[start_pos:], self.body_part)
             vel = vel / np.nanmax(vel)
@@ -524,6 +539,7 @@ class Day:
             plt.scatter(movement_onset_pos, yhat[movement_onset_pos], marker='v')
             plt.scatter(len(yhat), yhat[-1], marker='^')
             plt.show()
+
         return partial_data[start_pos + movement_onset_pos:endpos]
 
     def find_mvmnt_pos(self, data):
@@ -666,13 +682,13 @@ if __name__ == "__main__":
     DATA_PATH = r'Z:\elianna.rosenschein\n{date}\DLC_Analysis\nana-trial{trial_num}_DLC_3D_{angle}.csv'
     ED_PATH = r'Z:\elianna.rosenschein\n{date}\EDfiles\n{trial_num}ee.{file_num}.mat'
     INFO_FILE = r'Z:\elianna.rosenschein\n{date}\Info\n{date}_param.mat'
-    INDEX_FILE = r'Z:\elianna.rosenschein\alignment_indices_n{date}.mat'  # Exported from Nirvik's Matlab code
-    VIDEO_INFO_FILE = r'Z:\elianna.rosenschein\vidInfo_n{date}.mat'  # Exported from Nirvik's Matlab code
+    INDEX_FILE = r'Z:\elianna.rosenschein\alignment_indices_n{date}.mat'  # Exported from Nirvik's Matlab code (I, J)
+    VIDEO_INFO_FILE = r'Z:\elianna.rosenschein\vidInfo_n{date}.mat'  # Exported from Nirvik's Matlab code (vidinfo)
 
     BODY_PART = 'finger'  # body part that we want to analyze
     ANGLE = 'SIDE'
-    DATE = '270122'  # '301221'# '281221' #'270122'
-    ANALYSIS_FUNC = "turning_point"  #"two_d"  # "plot_velocity"  #
+    DATE = '270122'  #'281221'  # '301221' #
+    ANALYSIS_FUNC = "plot_velocity"  #"turning_point"  #"two_d"  #
 
     data_path = DATA_PATH.format(date=DATE, trial_num='{trial_num}', angle=ANGLE)
     ed_path = ED_PATH.format(date=DATE, trial_num='{trial_num}', file_num='{file_num}')
@@ -683,7 +699,7 @@ if __name__ == "__main__":
     day = Day(DATE, BODY_PART, ANGLE, ANALYSIS_FUNC, data_path, ed_path, info_file, index_file, video_info_file)
     day.preprocess()
     # day.calc_mean_delta(day.trial_data)
-    day.run_analysis(aggregate=False, hfs=None, update=True, init_target=None, update_target=None)
+    # day.run_analysis(aggregate=False, hfs=False, update=False, init_target=None, update_target=None)
 
     print("thrown away:")
     print('HFS+Update: ' + str(100 * day.a1 / day.trial_data[day.trial_data.apply(lambda row: (day.is_HFS(row['csvNum']) and day.is_update_trial(row['csvNum'])), axis=1)].shape[0]) + "%")
@@ -698,6 +714,6 @@ if __name__ == "__main__":
                              axis=1)].shape[0]) + "%")
 
 # TODO JOINT ANGLES
-# todo if possible make movement time better
+# todo change projection anchors for new days
 # todo update time checks
-# TODO try new dates to check code
+# todo fix column choosing for dates with more columns
