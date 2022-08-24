@@ -6,6 +6,9 @@ import matplotlib.pyplot as plt
 import math
 import os
 import rdp
+from scipy import stats
+import helpers
+from helpers import angle, check_delta, speed, ms_to_frames, frames_to_ms, calculate_velocity, two_d, rename_headers, convert_val_to_str
 
 from mat4py import loadmat
 from mpl_toolkits.mplot3d import Axes3D
@@ -16,15 +19,9 @@ pysqldf = lambda q: sqldf(q, globals())
 PERCENTAGE = 1
 KERNEL_SIZE = 40
 
-# dictionary that links the body parts from the analysis to the colomns names
-body_cols_side = {'finger': ['DLC_3D_SIDE', 'DLC_3D_SIDE.1', 'DLC_3D_SIDE.2'],
-                  'wrist': ['DLC_3D_SIDE.3', 'DLC_3D_SIDE.4', 'DLC_3D_SIDE.5'],
-                  'elbow': ['DLC_3D_SIDE.6', 'DLC_3D_SIDE.7', 'DLC_3D_SIDE.8']}
-body_cols_top = {'finger': ['DLC_3D_TOP', 'DLC_3D_TOP.1', 'DLC_3D_TOP.2'],
-                 'wrist': ['DLC_3D_TOP.3', 'DLC_3D_TOP.4', 'DLC_3D_TOP.5'],
-                 'elbow': ['DLC_3D_TOP.6', 'DLC_3D_TOP.7', 'DLC_3D_TOP.8']}
 
-camera_angle = {'SIDE': body_cols_side, 'TOP': body_cols_top}
+
+
 
 # # targets based on mean endpoint in this specific projection
 # target_dict = {1: (0.43902833714569894, -1.4275273691008923), 2: (3.3323351848647977, -1.0233081538278552),
@@ -42,140 +39,6 @@ target_dict = {1: (0, -scale_factor * 0.68), 2: (scale_factor * 0.476, -scale_fa
 
 
 FS = 120
-
-
-def angle(dir):
-    """
-    Returns the angles between vectors.
-
-    Parameters:
-    dir is a 2D-array of shape (N,M) representing N vectors in M-dimensional space.
-
-    The return value is a 1D-array of values of shape (N-1,), with each value
-    between 0 and pi.
-
-    0 implies the vectors point in the same direction
-    pi/2 implies the vectors are orthogonal
-    pi implies the vectors point in opposite directions
-    """
-    dir2 = dir[1:]
-    dir1 = dir[:-1]
-    return np.arccos((dir1 * dir2).sum(axis=1) / (
-        np.sqrt((dir1 ** 2).sum(axis=1) * (dir2 ** 2).sum(axis=1))))
-
-
-def check_delta(trial_data, body_part):
-    if trial_data.empty or trial_data.shape[0] < 2:
-        return 0
-    kernel = np.ones(KERNEL_SIZE) / KERNEL_SIZE
-    vel = calculate_velocity(trial_data, body_part)
-    vel = vel / np.nanmax(vel)
-    yhat = np.convolve(vel, kernel, mode='same')
-    yhat = yhat[~np.isnan(yhat)]
-    if len(yhat > 0):
-        return max(yhat) - yhat[0]
-    return 0
-
-
-def speed(data, body_part):
-    x_dat = data['{0}_x'.format(body_part)]
-    y_dat = data['{0}_y'.format(body_part)]
-    z_dat = data['{0}_z'.format(body_part)]
-
-    temp_data = pd.DataFrame()
-    temp_data['x_dat'] = x_dat
-    temp_data['y_dat'] = y_dat
-    temp_data['z_dat'] = z_dat
-
-    speed = np.linalg.norm(temp_data.values, axis=1)  # does the same as np.sqrt(x_dat**2 + y_dat**2 + z_dat**2)
-    # acc['acc_head'] = (speed['head'].diff()) / ((speed['Time'].diff()))
-    # velocity = np.linalg.norm(temp_data.diff(), axis=1)
-
-    return list(speed)
-
-
-def ms_to_frames(ms):
-    frame = ms * (FS / 1000)
-    return int(frame)
-
-
-def calculate_velocity(data, body_part):
-    x_dat = data['{0}_x'.format(body_part)]
-    y_dat = data['{0}_y'.format(body_part)]
-    z_dat = data['{0}_z'.format(body_part)]
-    time = pd.Series(np.linspace(0, len(x_dat) / FS, len(x_dat)))
-
-    temp_data = pd.DataFrame()
-    temp_data['x_dat'] = x_dat.diff()  # / time.diff()
-    temp_data['y_dat'] = y_dat.diff()  # / time.diff()
-    temp_data['z_dat'] = z_dat.diff()  # / time.diff()
-
-    # speed_res = pd.DataFrame([speed(data, body_part)])
-    velocity_res = np.linalg.norm(temp_data.values, axis=1)  # np.linalg.norm(speed_res.diff(axis=1), axis=1)
-
-    return list(velocity_res)
-
-
-def two_d(data, body_part, plot=True, title=None):
-    p = np.array([9.095956756, -2.976828776, 8.603911929])  # point of frame 46 from trail 1 from SIDE project
-    q = np.array([6.940065994, -3.029730601, 11.10148329])  # point of frame 120 from trail 50 from SIDE project
-    d = np.array([8.885579723, -2.428987168, 11.60233444])  # point of frame 25 from trail 46 from SIDE project
-    u = q - p
-    v = d - q
-
-    w2 = np.array([u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - v[0] * u[1]])
-    w = w2 / np.linalg.norm(w2)
-    # print(np.linalg.norm(w))
-    T = np.array([2, 4, 7, 5, 1, 6, 3, 8])
-    n = 0
-    Mov_point_data = data
-    Mov_point_data = Mov_point_data.reset_index()
-    L = np.zeros([len((Mov_point_data)), 2])
-
-    x = np.cross(w, v) / np.linalg.norm(np.cross(w, v))
-    # print(x)
-    y = v / np.linalg.norm(v)
-
-    for i in range(len(Mov_point_data)):
-        p = np.array(
-            [Mov_point_data.loc[i, 'finger_x'], Mov_point_data.loc[i, 'finger_y'], Mov_point_data.loc[i, 'finger_z']])
-        proj_point = p - np.dot(p, w) * w
-        L[i, :] = np.array([np.dot(x, p), np.dot(y, p)])
-    # plt.scatter(L[:, 0], L[:, 1], c=np.linspace(1, L.shape[0], L.shape[0]), cmap='Reds')
-    # plt.plot(L[:, 0] -  L[0][0], L[:, 1]-  L[0][1])
-    # plt.text(L[-1, 0] + 0.1, L[-1, 0] + 0.1, s=str(T[n]) + ',' + str(i), c='red')
-    n = n + 1
-    # ניסינו להדפיס את מספר המטרה על הגרף באמצעות TEXT עבור הנקודת האחרונה. משהו לא הסתדר
-    if plot:
-        if L.shape[0] != 0 and np.random.binomial(1, PERCENTAGE):
-            plt.plot(L[:, 0] - L[0][0], L[:, 1] - L[0][1])
-            center = L[0]
-            plt.xlim(- 7, 7)
-            plt.ylim(-7, 7)
-        if title:
-            plt.title(title)
-        plt.show()
-    return L
-
-
-def rename_headers(data, body_part, angle):
-    headers_names = ['{0}_x'.format(body_part),
-                     '{0}_y'.format(body_part),
-                     '{0}_z'.format(body_part)]
-    body_part_cols = [camera_angle[angle][body_part][0],
-                      camera_angle[angle][body_part][1],
-                      camera_angle[angle][body_part][2]]
-    d = dict(zip(body_part_cols, headers_names))
-    partial_data = data.rename(columns=d, inplace=False)
-    return partial_data.drop([0, 1])
-
-
-def convert_val_to_str(data, body_part):
-    temp_str = '{0}_'.format(body_part)
-    data[temp_str + 'x'] = pd.to_numeric(data[temp_str + 'x'], downcast="float")
-    data[temp_str + 'y'] = pd.to_numeric(data[temp_str + 'y'], downcast="float")
-    data[temp_str + 'z'] = pd.to_numeric(data[temp_str + 'z'], downcast="float")
-    return data
 
 
 class Day:
@@ -206,6 +69,7 @@ class Day:
                               "plot_velocity": self.plot_velocity, "two_d": self.plot_2d_trajectory,
                               "turning_point": self.plot_2d_trajectory_with_turning_point}
         self.date = date
+        self.res_dict = {}
         self.body_part = body_part
         self.angle = angle
         self.analysis_func = analysis_func_dict[analysis_func]
@@ -221,7 +85,9 @@ class Day:
              'update': pd.Series([], dtype=str),
              'HFS': pd.Series([], dtype=str), 'Burst': pd.Series([], dtype=str), 'Go_End': pd.Series([], dtype=str),
              'TargetJump': pd.Series([], dtype=str),
-             'TrialTimes': pd.Series([], dtype=str), 'VidTicks': pd.Series([], dtype=str)})
+             'updateDelay': pd.Series([], dtype=str),
+             'TrialTimes': pd.Series([], dtype=str), 'VidTicks': pd.Series([], dtype=str),
+             'projectionX': pd.Series([], dtype=str), 'projectionY': pd.Series([], dtype=str)})
 
     def load_info_file(self):
         """
@@ -323,7 +189,7 @@ class Day:
     def plot_velocity(self, relevant_trials, body_part, title="", aggregate=False):
         temp_data = pd.DataFrame()
         for csv_index in relevant_trials['csvNum']:
-            trial_data = self.process_data(csv_index)
+            trial_data = self.process_data(csv_index)#, from_jump=True)
             if trial_data.empty:
                 continue
             res = calculate_velocity(trial_data, body_part)
@@ -370,22 +236,22 @@ class Day:
         plt.title(title)
         plt.show()
 
-    def plot_2d_trajectory_with_turning_point(self, relevant_trials, body_part, title="", aggregate=None):
+    def plot_2d_trajectory_with_turning_point(self, relevant_trials, body_part, title="", aggregate=False, is_hfs=False):
         color_dict = {1: 'b', 2: 'r', 3: 'g', 4: 'c', 5: 'm', 6: 'y', 7: 'yellow', 8: 'brown'}
+        turn_time = []
         for csv_index in relevant_trials['csvNum']:
-            fig = plt.figure()
-            # for csv_index in relevant_trials['csvNum']:
-            trial_data = self.process_data(csv_index)
-            if trial_data.empty:
-                # print(csv_index)
+            if not aggregate: fig = plt.figure()
+            try:
+                trial_data = self.process_data(csv_index, from_jump=True)
+                projection = two_d(trial_data, self.body_part, plot=False)
+                x = projection[:, 0] - projection[:, 0][0]
+                y = -1 * (projection[:, 1] - projection[:, 1][0])
+            except IndexError as err:
+                print("trial {trial_num} threw an exception: {error}".format(trial_num=csv_index, error=err))
                 continue
-            projection = two_d(trial_data, self.body_part, plot=False)
-            x = projection[:, 0] - projection[:, 0][0]
-            y = -1 * (projection[:, 1] - projection[:, 1][0])
             init_target = list(self.trial_data.loc[self.trial_data['csvNum'] == csv_index]['target'])[0]
             update_target = list(self.trial_data.loc[self.trial_data['csvNum'] == csv_index]['update'])[0]
             update_target = update_target if update_target is not None else init_target
-            # plt.plot(x, y, color=color_dict[init_target], label='traj')  # change here to color by init or update target
 
             # todo play with this
             tolerance = 0.2 # determines how simplified the path will be. The larger the tolerance, the straighter the line
@@ -403,27 +269,57 @@ class Day:
             directions = np.diff(simplified, axis=0)
             theta = angle(directions)
             # Select the index of the points with the greatest theta
-            # Large theta is associated with greatest change in direction.
+            # Large theta is associated with greatest change in direction.a
             idx = np.where(theta > min_angle)[0] + 1
 
-            # fig = plt.figure()
-            ax = fig.add_subplot(111)
+            # find first turning point
+            try:
+                if sx.size > 0:
+                    norm_proj = np.stack((x, y), axis=1)
 
-            ax.plot(x, y, color=color_dict[init_target], label='original path')
-            ax.plot(sx, sy, 'g--', label='simplified path')
-            ax.plot(sx[idx], sy[idx], 'ro', markersize=10, label='turning points')
-            # ax.invert_yaxis()
-            ax.legend(loc='best')
+                    ind = np.where(norm_proj == norm_proj[
+                        np.where((norm_proj[:, 0] == sx[idx][0]) * (norm_proj[:, 1] == sy[idx][0]))])[0][0]
+                    turn_time.append(frames_to_ms(ind))
+                    # self.trial_data.loc[self.trial_data['csvNum'] == csv_index, 'projectionX'] = list(x)
+                    # self.trial_data.loc[self.trial_data['csvNum'] == csv_index, 'projectionY'] = list(y) todo save projection
+                    self.trial_data.loc[self.trial_data['csvNum'] == csv_index, 'updateDelay'] = frames_to_ms(ind)
+            except IndexError as err:
+                print("trial {trial_num} threw an exception: {error}".format(trial_num=csv_index, error=err))
+                continue
 
-            ax.scatter(target_dict[init_target][0], target_dict[init_target][1], s=500, c=color_dict[init_target])
-            ax.scatter(target_dict[update_target][0], target_dict[update_target][1], s=500, c=color_dict[update_target])
-            ax.scatter(0, 0, s=400, c='k')
-            plt.xlim(-4, 4)
-            plt.ylim(-4, 4)
-            plt.xlabel('x-axis')
-            plt.ylabel('y-axis')
-            plt.title(title)
+            if not aggregate:
+                ax = fig.add_subplot(111) #todo uncomment
+
+                ax.plot(x, y, color=color_dict[init_target], label='original path')
+                ax.plot(sx, sy, 'g--', label='simplified path')
+                ax.plot(sx[idx], sy[idx], 'ro', markersize=10, label='turning points')
+                # ax.invert_yaxis()
+                ax.legend(loc='best')
+
+                ax.scatter(target_dict[init_target][0], target_dict[init_target][1], s=500, c=color_dict[init_target])
+                ax.scatter(target_dict[update_target][0], target_dict[update_target][1], s=500, c=color_dict[update_target])
+                ax.scatter(0, 0, s=400, c='k')
+                plt.xlim(-4, 4)
+                plt.ylim(-4, 4)
+                plt.xlabel('x-axis')
+                plt.ylabel('y-axis')
+                plt.title(title + ' ' + str(frames_to_ms(ind)))
+                plt.show()
+        # plt.figure()
+        if aggregate:
+            if is_hfs:
+                self.res_dict[self.date] = {'mean': np.mean(np.array(turn_time)), 'std': (np.std(np.array(turn_time), ddof=1) / np.sqrt(np.size(np.array(turn_time)))), 'data': turn_time}
+
+            else:
+                self.res_dict[str(self.date) + 'no hfs'] = {'mean': np.mean(np.array(turn_time)), 'std': (np.std(np.array(turn_time), ddof=1) / np.sqrt(np.size(np.array(turn_time)))), 'data': turn_time}
+
             plt.show()
+        # print(str(self.date) + " NO hfs" + str(np.mean(np.array(turn_time))) + " " + str(np.std(np.array(turn_time))))
+        # plt.bar(0, np.mean(np.array(turn_time)), yerr=np.std(np.array(turn_time)), align='center', alpha=0.5, ecolor='black', capsize=10)
+        # plt.title(str(self.date) + " NO hfs")
+        # plt.show()
+
+
 
     def plot_2d_trajectory(self, relevant_trials, body_part, title="", aggregate=None):
         color_dict = {1: 'b', 2: 'r', 3: 'g', 4: 'c', 5: 'm', 6: 'y', 7: 'yellow', 8: 'brown'}
@@ -472,21 +368,16 @@ class Day:
         plt.title(title)
         plt.show()
 
-    def process_data(self, trial_index):
+    def process_data(self, trial_index, from_jump=False):
         data = pd.read_csv(self.data_path.format(trial_num=trial_index), header=0,
-                           usecols=camera_angle[self.angle][self.body_part])
+                           usecols=helpers.camera_angle[self.angle][self.body_part])
         # rename headers:
         partial_data = rename_headers(data, self.body_part, self.angle)
 
         # convert argument to a float type
         partial_data = convert_val_to_str(partial_data, self.body_part)
 
-        try: #TODO
-            go = list(self.trial_data.loc[self.trial_data['csvNum'] == trial_index]['Go_End'])[0][0]
-        except:
-            print(trial_index)
-            exit(1)
-
+        go = list(self.trial_data.loc[self.trial_data['csvNum'] == trial_index]['Go_End'])[0][0]
         end = list(self.trial_data.loc[self.trial_data['csvNum'] == trial_index]['Go_End'])[0][1]
         vidticks = self.trial_data.loc[self.trial_data['csvNum'] == trial_index].reset_index()['VidTicks'][0]
         if math.isnan(go) or math.isnan(end) or vidticks == []:
@@ -512,7 +403,6 @@ class Day:
                     self.b1 += 1
                 else:
                     self.b2 += 1
-
             return partial_data[:0]
         if True:
             trial_times_7 = list(self.trial_data.loc[self.trial_data['csvNum'] == trial_index]['TrialTimes'])[0][6]
@@ -540,6 +430,12 @@ class Day:
             plt.scatter(len(yhat), yhat[-1], marker='^')
             plt.show()
 
+        if from_jump:
+            jump = list(self.trial_data.loc[self.trial_data['csvNum'] == trial_index]['TrialTimes'])[0][5]
+            jump_diff = [abs(a - jump) for a in vidticks]
+            jump_pos = jump_diff.index(min(jump_diff))
+            start_pos = jump_pos
+            movement_onset_pos = 0
         return partial_data[start_pos + movement_onset_pos:endpos]
 
     def find_mvmnt_pos(self, data):
@@ -618,7 +514,7 @@ class Day:
                     (", HFS" if hfs else "") + (", update" if update else "") + \
                     (("\ninit_target: " + str(init_target)) if init_target else "") + \
                     (("\nupdate_target: " + str(update_target)) if update_target else "")
-        self.analysis_func(relevant_trials, self.body_part, title=title, aggregate=aggregate)
+        self.analysis_func(relevant_trials, self.body_part, title=title, aggregate=aggregate, is_hfs=hfs)
 
     def is_update_trial(self, csv_index):
         if math.isnan(self.trial_data.loc[self.trial_data['csvNum'] == csv_index]['update']) or \
@@ -687,31 +583,67 @@ if __name__ == "__main__":
 
     BODY_PART = 'finger'  # body part that we want to analyze
     ANGLE = 'SIDE'
-    DATE = '270122'  #'281221'  # '301221' #
-    ANALYSIS_FUNC = "plot_velocity"  #"turning_point"  #"two_d"  #
+    DATE = '281221'  #'270122'  # '301221' #
+    ANALYSIS_FUNC = "turning_point"  #"plot_velocity"  #"two_d"  #
 
-    data_path = DATA_PATH.format(date=DATE, trial_num='{trial_num}', angle=ANGLE)
-    ed_path = ED_PATH.format(date=DATE, trial_num='{trial_num}', file_num='{file_num}')
-    info_file = INFO_FILE.format(date=DATE)
-    index_file = INDEX_FILE.format(date=DATE)
-    video_info_file = VIDEO_INFO_FILE.format(date=DATE)
+    pair_test_data = pd.DataFrame({'HFS': pd.Series([], dtype=str), 'noHFS': pd.Series([], dtype=str)})
+    date_list = ['281221', '270122', '301221', '240222', '291221']
+    for DATE in date_list:
+        data_path = DATA_PATH.format(date=DATE, trial_num='{trial_num}', angle=ANGLE)
+        ed_path = ED_PATH.format(date=DATE, trial_num='{trial_num}', file_num='{file_num}')
+        info_file = INFO_FILE.format(date=DATE)
+        index_file = INDEX_FILE.format(date=DATE)
+        video_info_file = VIDEO_INFO_FILE.format(date=DATE)
 
-    day = Day(DATE, BODY_PART, ANGLE, ANALYSIS_FUNC, data_path, ed_path, info_file, index_file, video_info_file)
-    day.preprocess()
-    # day.calc_mean_delta(day.trial_data)
-    # day.run_analysis(aggregate=False, hfs=False, update=False, init_target=None, update_target=None)
+        day = Day(DATE, BODY_PART, ANGLE, ANALYSIS_FUNC, data_path, ed_path, info_file, index_file, video_info_file)
+        day.preprocess()
+        # day.calc_mean_delta(day.trial_data)
+        for bool in [True, False]:
+            day.run_analysis(aggregate=True, hfs=bool, update=True, init_target=None, update_target=None)
+        fig, ax = plt.subplots()
+        materials = ['No HFS', 'HFS']
+        ax.set_xticklabels(materials)
+        CTEs = [day.res_dict[str(DATE) + 'no hfs']['mean'], day.res_dict[DATE]['mean']]
+        error = [day.res_dict[str(DATE) + 'no hfs']['std'], day.res_dict[DATE]['std']]
+        ax.bar((0, 1), CTEs, yerr=error, align='center', alpha=0.5, ecolor='black', capsize=10)
+        x_pos = np.arange(len(materials))
+        ax.set_xticks(x_pos)
+        _, pval = stats.ttest_ind(day.res_dict[DATE]['data'], day.res_dict[str(DATE) + 'no hfs']['data'])
+        plt.title(str(day.date) + " comparison between turn time; pval: " + str(round(pval, 2)))
+        ax.set_xticklabels(materials)
+        plt.show()
+        ax = pd.Series(day.res_dict[str(DATE) + 'no hfs']['data']).plot.kde(label="control")
+        ax = pd.Series(day.res_dict[DATE]['data']).plot.kde(label="hfs")
+        plt.title("distribution of reaction time " + str(DATE))
+        plt.legend()
+        plt.show()
 
-    print("thrown away:")
-    print('HFS+Update: ' + str(100 * day.a1 / day.trial_data[day.trial_data.apply(lambda row: (day.is_HFS(row['csvNum']) and day.is_update_trial(row['csvNum'])), axis=1)].shape[0]) + "%")
-    print('HFS+ no update: ' + str(100 * day.a2 / day.trial_data[
-        day.trial_data.apply(lambda row: (day.is_HFS(row['csvNum']) and (not day.is_update_trial(row['csvNum']))),
-                             axis=1)].shape[0]) + "%")
-    print('No HFS+update: ' + str(100 * day.b1 / day.trial_data[
-        day.trial_data.apply(lambda row: (not day.is_HFS(row['csvNum']) and (day.is_update_trial(row['csvNum']))),
-                             axis=1)].shape[0]) + "%")
-    print('No HFS+ No update: ' + str(100 * day.b2 / day.trial_data[
-        day.trial_data.apply(lambda row: (not day.is_HFS(row['csvNum']) and (not day.is_update_trial(row['csvNum']))),
-                             axis=1)].shape[0]) + "%")
+        temp = {'HFS': day.res_dict[DATE]['mean'],
+                'noHFS': day.res_dict[str(DATE) + 'no hfs']['mean']}
+        pair_test_data = pd.concat([pair_test_data, pd.DataFrame([temp])], ignore_index=True)
+    print("paired ttest results: ")
+    _, pairedpval = stats.ttest_rel(pair_test_data['HFS'], pair_test_data['noHFS'])
+    plt.figure()
+    for index, row in pair_test_data.iterrows():
+        a = row['noHFS']
+        b = row['HFS']
+        if a != 0 or b!= 0:
+            plt.plot([[1, a], [2, b]], c='b')
+    plt.title('paired ttest; pvalue=' + str(round(pairedpval, 7)))
+    plt.ylim((300, 550))
+    plt.show()
+
+    # print("thrown away:")
+    # print('HFS+Update: ' + str(100 * day.a1 / day.trial_data[day.trial_data.apply(lambda row: (day.is_HFS(row['csvNum']) and day.is_update_trial(row['csvNum'])), axis=1)].shape[0]) + "%")
+    # print('HFS+ no update: ' + str(100 * day.a2 / day.trial_data[
+    #     day.trial_data.apply(lambda row: (day.is_HFS(row['csvNum']) and (not day.is_update_trial(row['csvNum']))),
+    #                          axis=1)].shape[0]) + "%")
+    # print('No HFS+update: ' + str(100 * day.b1 / day.trial_data[
+    #     day.trial_data.apply(lambda row: (not day.is_HFS(row['csvNum']) and (day.is_update_trial(row['csvNum']))),
+    #                          axis=1)].shape[0]) + "%")
+    # print('No HFS+ No update: ' + str(100 * day.b2 / day.trial_data[
+    #     day.trial_data.apply(lambda row: (not day.is_HFS(row['csvNum']) and (not day.is_update_trial(row['csvNum']))),
+    #                          axis=1)].shape[0]) + "%")
 
 # TODO JOINT ANGLES
 # todo change projection anchors for new days
