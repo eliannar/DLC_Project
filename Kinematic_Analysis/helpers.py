@@ -6,14 +6,17 @@ KERNEL_SIZE = 40
 FS = 120
 
 # dictionary that links the body parts from the analysis to the colomns names
-body_cols_side = {'finger': ['DLC_3D_SIDE', 'DLC_3D_SIDE.1', 'DLC_3D_SIDE.2'],
-                  'wrist': ['DLC_3D_SIDE.3', 'DLC_3D_SIDE.4', 'DLC_3D_SIDE.5'],
-                  'elbow': ['DLC_3D_SIDE.6', 'DLC_3D_SIDE.7', 'DLC_3D_SIDE.8']}
-body_cols_top = {'finger': ['DLC_3D_TOP', 'DLC_3D_TOP.1', 'DLC_3D_TOP.2'],
-                 'wrist': ['DLC_3D_TOP.3', 'DLC_3D_TOP.4', 'DLC_3D_TOP.5'],
-                 'elbow': ['DLC_3D_TOP.6', 'DLC_3D_TOP.7', 'DLC_3D_TOP.8']}
+body_cols = {'finger': ['finger_1', 'finger_1.1', 'finger_1.2'],
+                  'wrist': ['wrist', 'wrist.1', 'wrist.2'],
+                  'elbow': ['elbow', 'elbow.1', 'elbow.2']}
 
-camera_angle = {'SIDE': body_cols_side, 'TOP': body_cols_top}
+def formatPaths(dataPath, edPath, infoPath, indexPath, vidInfoPath, date, angle='SIDE'):
+    data_path = dataPath.format(date=date, trial_num='{trial_num}', angle=angle)
+    ed_path = edPath.format(date=date, trial_num='{trial_num}', file_num='{file_num}')
+    info_file = infoPath.format(date=date)
+    index_file = indexPath.format(date=date)
+    video_info_file = vidInfoPath.format(date=date)
+    return data_path, ed_path, info_file, index_file, video_info_file
 
 def angle(dir):
     """
@@ -134,15 +137,16 @@ def two_d(data, body_part, plot=True, title=None):
 
 
 def rename_headers(data, body_part, angle):
+    data.drop([0, 1])
     headers_names = ['{0}_x'.format(body_part),
                      '{0}_y'.format(body_part),
                      '{0}_z'.format(body_part)]
-    body_part_cols = [camera_angle[angle][body_part][0],
-                      camera_angle[angle][body_part][1],
-                      camera_angle[angle][body_part][2]]
+    body_part_cols = [body_cols[body_part][0],
+                      body_cols[body_part][1],
+                      body_cols[body_part][2]]
     d = dict(zip(body_part_cols, headers_names))
     partial_data = data.rename(columns=d, inplace=False)
-    return partial_data.drop([0, 1])
+    return partial_data.drop([0])
 
 
 def convert_val_to_str(data, body_part):
