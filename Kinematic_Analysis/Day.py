@@ -118,10 +118,7 @@ class Day:
                                       0] + subsess_file - 1  # file index in all files from day
                     trial_times_lst = self.find_trialtimes_index(ed_file, invalid_counter, trial)
                     csv_ind = self.find_csv_index(running_count)
-                    try:
-                        burst_type = self.find_burst_type(subsess, file_offset)
-                    except:
-                        burst_type = 1
+                    burst_type = self.find_burst_type(subsess, file_offset)
                     vidticks = all_vidticks[running_count - 1] if csv_ind is not None else []
                     go_end = self.set_go_end(csv_ind, trial_times_lst)  # find from go signal to in periphery
 
@@ -145,7 +142,12 @@ class Day:
         is_burst = self.burst_subsess[file_num]
         if not is_burst:
             return 0
-        elif self.burst_settings[subsess]['Stim'][0]['Freq'] == 25:
+        comp = self.burst_settings[subsess]['Stim']
+        if type(comp) == list:
+            comp = comp[0]['Freq']
+        else:
+            comp = comp['Freq']
+        if comp == 25:
             return 2
         else:
             return 1
