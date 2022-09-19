@@ -40,7 +40,8 @@ class Day:
                  video_info_file):
         analysis_func_dict = {"plot_clusters": self.plot_clusters, "plot_2d_clusters": self.plot_2d_clusters,
                               "plot_velocity": self.plot_velocity, "plot_2d_trajectory": self.plot_2d_trajectory,
-                              "plot_2d_trajectory_with_turning_point": self.plot_2d_trajectory_with_turning_point}
+                              "plot_2d_trajectory_with_turning_point": self.plot_2d_trajectory_with_turning_point
+                              }
         self.date = date
         self.res_dict = {}
         self.body_part = body_part
@@ -504,7 +505,7 @@ def main(argv):
         BODY_PART = 'finger'  # body part that we want to analyze
         ANGLE = 'SIDE'
         DATES = ['020122', '030122', '040122', '050122', '170122', '180122', '190122', '200122', '240122', '250122',
-                 '260122', '270122', '281221', '291221', '300122', '301221']#, '100122']#, '160122', '230122']
+                 '260122', '270122', '281221', '291221', '300122', '301221', '100122']#, '160122', '230122']
         ANALYSIS_FUNC = "plot_2d_trajectory_with_turning_point"
     else:
         # args: datapath, body part, analysis function, dates

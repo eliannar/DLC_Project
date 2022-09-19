@@ -7,7 +7,7 @@ KERNEL_SIZE = 40
 FS = 120
 
 # dictionary that links the body parts from the analysis to the colomns names
-body_cols = {'finger': ['finger_1', 'finger_1.1', 'finger_1.2'],
+body_cols = {'finger': ['finger_3', 'finger_3.1', 'finger_3.2'],
                   'wrist': ['wrist', 'wrist.1', 'wrist.2'],
                   'elbow': ['elbow', 'elbow.1', 'elbow.2']}
 
