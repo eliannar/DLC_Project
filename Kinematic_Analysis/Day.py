@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import math
-# import rdp
+import rdp
 from scipy import stats
 from mat4py import loadmat
 from mpl_toolkits.mplot3d import Axes3D
@@ -218,22 +218,18 @@ class Day:
                 max_pos = vel.index(max_vel)
                 if max_pos > 1:
                     diff = [(a < (max_vel / 10)) for a in vel[:max_pos + 1]]
-                    try:
+                    if True in diff:
                         mvmnt_pos = diff[::-1].index(True)
                         mvmnt_pos = len(diff) - mvmnt_pos - 1
-                    except:
+                    else:
                         mvmnt_pos = 0
                         return mvmnt_pos
-                while not self.mvmnt_local_min(mvmnt_pos, vel):
-                    pass
+                while not self.mvmnt_local_min(mvmnt_pos, vel) and len(diff) > 0:
                     diff = diff[mvmnt_pos + 1:]
-                    try:
+                    if len(diff) > 0:
                         offset = diff[::-1].index(min([a for a in diff if not np.isnan(a)]))
                         offset = len(diff) - offset - 1
                         mvmnt_pos += offset
-                    except:
-                        mvmnt_pos = mvmnt_pos
-                        break
         return mvmnt_pos
 
     def mvmnt_local_min(self, position, velocity_vector):
@@ -374,14 +370,11 @@ class Day:
         turn_time = []
         for csv_index in relevant_trials['csvNum']:
             if not aggregate: fig = plt.figure()
-            try:
-                trial_data = self.process_data(csv_index, from_jump=True)
-                projection = two_d(trial_data, self.body_part, plot=False)
+            trial_data = self.process_data(csv_index, from_jump=True)
+            projection = two_d(trial_data, self.body_part, plot=False)
+            if len(projection) > 0:
                 x = projection[:, 0] - projection[:, 0][0]
                 y = -1 * (projection[:, 1] - projection[:, 1][0])
-            except IndexError as err:
-                print("trial {trial_num} threw an exception: {error}".format(trial_num=csv_index, error=err))
-                continue
             init_target = list(self.trial_data.loc[self.trial_data['csvNum'] == csv_index]['target'])[0]
             update_target = list(self.trial_data.loc[self.trial_data['csvNum'] == csv_index]['update'])[0]
             update_target = update_target if update_target is not None else init_target
@@ -406,17 +399,13 @@ class Day:
             idx = np.where(theta > min_angle)[0] + 1
 
             # find first turning point
-            try:
-                if sx.size > 0:
-                    norm_proj = np.stack((x, y), axis=1)
+            if sx.size > 0 and len(idx) > 0:
+                norm_proj = np.stack((x, y), axis=1)
 
-                    ind = np.where(norm_proj == norm_proj[
-                        np.where((norm_proj[:, 0] == sx[idx][0]) * (norm_proj[:, 1] == sy[idx][0]))])[0][0]
-                    turn_time.append(frames_to_ms(ind))
-                    self.trial_data.loc[self.trial_data['csvNum'] == csv_index, 'updateDelay'] = frames_to_ms(ind)
-            except IndexError as err:
-                print("trial {trial_num} threw an exception: {error}".format(trial_num=csv_index, error=err))
-                continue
+                ind = np.where(norm_proj == norm_proj[
+                    np.where((norm_proj[:, 0] == sx[idx][0]) * (norm_proj[:, 1] == sy[idx][0]))])[0][0]
+                turn_time.append(frames_to_ms(ind))
+                self.trial_data.loc[self.trial_data['csvNum'] == csv_index, 'updateDelay'] = frames_to_ms(ind)
 
             if not aggregate:
                 ax = fig.add_subplot(111)
@@ -495,17 +484,17 @@ class Day:
         plt.title(title)
         plt.show()
 
-        # # TODO if you want to write more analysis functions:
-        # # 1 - uncomment the template below and fill in the logic.
-        # # 2 - add the name of the function to the analysis_func_dict above. "NEW_NAME": self.NEW_NAME
-        # # 3 - write the name of the function when running the code from the command line, or put it as ANALYSIS_FUNC below.
-        # def NEW_NAME(self, relevant_trials, body_part, title="", aggregate=None, is_hfs=None):
-        #     # Fill in function logic here instead of pass
-        #     pass
+    # # TODO if you want to write more analysis functions:
+    # # 1 - uncomment the template below and fill in the logic.
+    # # 2 - add the name of the function to the analysis_func_dict above. "NEW_NAME": self.NEW_NAME
+    # # 3 - write the name of the function when running the code from the command line, or put it as ANALYSIS_FUNC below.
+    # def NEW_NAME(self, relevant_trials, body_part, title="", aggregate=None, is_hfs=None):
+    #     # Fill in function logic here instead of pass
+    #     pass
 
 
 def main(argv):
-    if len(argv) == 1:
+    if len(argv) == 1: # if you want to edit the arguments manually, change them here:
         DATA_PATH = r'Z:\elianna.rosenschein\n{date}\n{date}\nana-trial{trial_num}_DLC_3D_{angle}.csv'
         ED_PATH = r'Z:\elianna.rosenschein\n{date}\EDfiles\n{trial_num}ee.{file_num}.mat'
         INFO_FILE = r'Z:\elianna.rosenschein\n{date}\Info\n{date}_param.mat'
@@ -515,8 +504,8 @@ def main(argv):
         BODY_PART = 'finger'  # body part that we want to analyze
         ANGLE = 'SIDE'
         DATES = ['020122', '030122', '040122', '050122', '170122', '180122', '190122', '200122', '240122', '250122',
-                 '260122', '270122', '281221', '291221', '300122', '301221']  # '100122', '160122', '230122'
-        ANALYSIS_FUNC = "plot_2d_trajectory_with_turning_point"  # 'plot_clusters' #"plot_velocity"  #
+                 '260122', '270122', '281221', '291221', '300122', '301221']#, '100122']#, '160122', '230122']
+        ANALYSIS_FUNC = "plot_2d_trajectory_with_turning_point"
     else:
         # args: datapath, body part, analysis function, dates
         dataPath = argv[1]
@@ -541,26 +530,23 @@ def main(argv):
         day.preprocess()
         for bool in [True, False]:
             day.run_analysis(aggregate=True, hfs=bool, update=True, init_target=None, update_target=None)
-        try:
-            fig, (ax1, ax2) = plt.subplots(1, 2)
-            fig.suptitle(DATE)
-            materials = ['No HFS', 'HFS']
-            ax1.set_xticklabels(materials)
-            CTEs = [day.res_dict[str(DATE) + 'no hfs']['mean'], day.res_dict[DATE]['mean']]
-            error = [day.res_dict[str(DATE) + 'no hfs']['sem'], day.res_dict[DATE]['sem']]
-            ax1.bar((0, 1), CTEs, yerr=error, align='center', alpha=0.5, ecolor='black', capsize=10)
-            x_pos = np.arange(len(materials))
-            ax1.set_xticks(x_pos)
-            _, pval = stats.ttest_ind(day.res_dict[DATE]['data'], day.res_dict[str(DATE) + 'no hfs']['data'])
-            ax1.set_title("turn time; pval: " + str(round(pval, 2)))
-            ax1.set_xticklabels(materials)
-            ax2 = pd.Series(day.res_dict[str(DATE) + 'no hfs']['data']).plot.kde(label="control")
-            ax2 = pd.Series(day.res_dict[DATE]['data']).plot.kde(label="hfs")
-            ax2.set_title("reaction time")
-            ax2.legend()
-            plt.show()
-        except:
-            pass
+        fig, (ax1, ax2) = plt.subplots(1, 2)
+        fig.suptitle(DATE)
+        materials = ['No HFS', 'HFS']
+        ax1.set_xticklabels(materials)
+        CTEs = [day.res_dict[str(DATE) + 'no hfs']['mean'], day.res_dict[DATE]['mean']]
+        error = [day.res_dict[str(DATE) + 'no hfs']['sem'], day.res_dict[DATE]['sem']]
+        ax1.bar((0, 1), CTEs, yerr=error, align='center', alpha=0.5, ecolor='black', capsize=10)
+        x_pos = np.arange(len(materials))
+        ax1.set_xticks(x_pos)
+        _, pval = stats.ttest_ind(day.res_dict[DATE]['data'], day.res_dict[str(DATE) + 'no hfs']['data'])
+        ax1.set_title("turn time; pval: " + str(round(pval, 2)))
+        ax1.set_xticklabels(materials)
+        ax2 = pd.Series(day.res_dict[str(DATE) + 'no hfs']['data']).plot.kde(label="control")
+        ax2 = pd.Series(day.res_dict[DATE]['data']).plot.kde(label="hfs")
+        ax2.set_title("reaction time")
+        ax2.legend()
+        plt.show()
 
         temp = {'HFS': day.res_dict[DATE]['mean'], 'HFS-SEM': day.res_dict[DATE]['sem'],
                 'noHFS': day.res_dict[str(DATE) + 'no hfs']['mean'],
@@ -574,7 +560,7 @@ def main(argv):
         if a != 0 or b != 0:
             plt.plot([[1, a], [2, b]], c='b')
     plt.title('paired ttest; pvalue=' + str(round(pairedpval, 7)))
-    plt.ylim((300, 600))
+    plt.ylim((300, 570))
     plt.show()
 
 
