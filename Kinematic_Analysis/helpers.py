@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from matplotlib import pyplot as plt
 
 PERCENTAGE = 1
 KERNEL_SIZE = 40
@@ -9,6 +10,33 @@ FS = 120
 body_cols = {'finger': ['finger_1', 'finger_1.1', 'finger_1.2'],
                   'wrist': ['wrist', 'wrist.1', 'wrist.2'],
                   'elbow': ['elbow', 'elbow.1', 'elbow.2']}
+
+# # targets based on mean endpoint in this specific projection
+# target_dict = {1: (0.43902833714569894, -1.4275273691008923), 2: (3.3323351848647977, -1.0233081538278552),
+#                3: (3.0724469287156095, 0.8049932081901696), 4: (1.2696497115583854, 0.952799133154195),
+#                5: (-0.39409753186542545, 1.1234683471889075), 6: (-1.6717630953467482, 0.6480369523813078),
+#                7: (-2.3354596891361936, 0.031703546917977755), 8: (-0.46727825652621824, -1.440262648445679)}
+
+
+# targets scaled from Nirvik's coordinates, and flipped on the y axis
+scale_factor = 3.2
+target_dict = {1: (0, -scale_factor * 0.68), 2: (scale_factor * 0.476, -scale_factor * 0.476),
+               3: (scale_factor * 0.68, 0), 4: (scale_factor * 0.476, -scale_factor * -0.476),
+               5: (0, -scale_factor * -0.63), 6: (scale_factor * -0.476, -scale_factor * -0.476),
+               7: (scale_factor * -0.68, 0), 8: (scale_factor * -0.476, -scale_factor * 0.476)}
+
+def createEmptyTrialDataDF():
+    return pd.DataFrame(
+            {'TrialNum': pd.Series([], dtype=str), 'csvNum': pd.Series([], dtype=str),
+             'valid': pd.Series([], dtype=str),
+             'subSess': pd.Series([], dtype=str), 'target': pd.Series([], dtype=str),
+             'update': pd.Series([], dtype=str),
+             'HFS': pd.Series([], dtype=str), 'Burst': pd.Series([], dtype=str), 'Go_End': pd.Series([], dtype=str),
+             'TargetJump': pd.Series([], dtype=str),
+             'updateDelay': pd.Series([], dtype=str),
+             'TrialTimes': pd.Series([], dtype=str), 'VidTicks': pd.Series([], dtype=str),
+             'projectionX': pd.Series([], dtype=str), 'projectionY': pd.Series([], dtype=str)})
+
 
 def formatPaths(dataPath, edPath, infoPath, indexPath, vidInfoPath, date, angle='SIDE'):
     data_path = dataPath.format(date=date, trial_num='{trial_num}', angle=angle)
